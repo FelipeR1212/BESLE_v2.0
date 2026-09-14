@@ -52,10 +52,12 @@ function Write-ProjectHelpers {
     $runHelper = @"
 @echo off
 title BESLE - ejecutar simulacion configurada
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$launcher" -Mode Configured -ProjectPath "%~dp0" -NoPause
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$launcher" -Mode Configured -ProjectPath "%~dp0." -NoPause
+set "BESLE_EXIT=%ERRORLEVEL%"
 echo.
-if errorlevel 1 echo La simulacion termino con errores. Revise BESLE.log.
+if not "%BESLE_EXIT%"=="0" echo La simulacion termino con errores. Revise BESLE.log.
 pause
+exit /b %BESLE_EXIT%
 "@
     $editHelper = @"
 @echo off
@@ -201,7 +203,11 @@ try {
         $runDirectory = New-BesleProject -RunsRoot $OutputRoot -RunMode $Mode
     }
     else {
-        $runDirectory = [IO.Path]::GetFullPath($ProjectPath)
+        # Older generated helpers could leave a literal quote at the end of a
+        # directory whose path ended in a backslash. Accept those projects and
+        # immediately regenerate their helper with the corrected invocation.
+        $normalizedProjectPath = $ProjectPath.Trim().Trim('"')
+        $runDirectory = [IO.Path]::GetFullPath($normalizedProjectPath)
         if (-not (Test-Path -LiteralPath $runDirectory -PathType Container)) {
             throw "No existe el proyecto $runDirectory."
         }

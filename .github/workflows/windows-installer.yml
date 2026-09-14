@@ -288,22 +288,27 @@ jobs:
           $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
           [IO.File]::WriteAllText($config, $modified, $utf8NoBom)
 
-          $systemPowerShell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
           $env:PATH = @(
             (Join-Path $env:SystemRoot "System32"),
             $env:SystemRoot,
             (Join-Path $env:SystemRoot "System32\Wbem"),
             (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0")
           ) -join ";"
-          $launcherArguments = @(
-            "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass",
-            "-File", (Join-Path $env:BESLE_TEST_INSTALL_DIR "run-besle.ps1"),
-            "-Mode", "Configured", "-ProjectPath", $project, "-NoPause"
-          )
-
-          & $systemPowerShell @launcherArguments
-          if ($LASTEXITCODE -ne 0) {
-            throw "Rerunning the edited project failed with exit code $LASTEXITCODE"
+          $helper = Join-Path $project "run-this-simulation.cmd"
+          if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) {
+            throw "The generated rerun helper was not found."
+          }
+          $commandInterpreter = Join-Path $env:SystemRoot "System32\cmd.exe"
+          Push-Location $project
+          try {
+            & $commandInterpreter /d /c "run-this-simulation.cmd < nul"
+            $helperExitCode = $LASTEXITCODE
+          }
+          finally {
+            Pop-Location
+          }
+          if ($helperExitCode -ne 0) {
+            throw "Rerunning through the generated helper failed with exit code $helperExitCode"
           }
 
           $currentHash = (Get-FileHash -LiteralPath (Join-Path $env:BESLE_TEST_INSTALL_DIR "BESLE.exe") -Algorithm SHA256).Hash

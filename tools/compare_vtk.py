@@ -29,6 +29,16 @@ def numbers(path: Path) -> list[float]:
     return [float(token.replace("D", "E").replace("d", "e")) for token in NUMBER.findall(text)]
 
 
+def location(relative: str, index: int, left: float, right: float, error: float) -> dict[str, object]:
+    return {
+        "file": relative,
+        "token": index,
+        "reference": left,
+        "candidate": right,
+        "absolute_error": error,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("reference", type=Path)
@@ -40,35 +50,47 @@ def main() -> int:
 
     reference_files = vtk_files(args.reference)
     candidate_files = vtk_files(args.candidate)
+    structural_errors: list[str] = []
+    examples: list[dict[str, object]] = []
 
     report: dict[str, object] = {
         "reference_root": str(args.reference),
         "candidate_root": str(args.candidate),
-        "rtol": args.rtol,
-        "atol": args.atol,
+        "tolerance": {
+            "formula": "abs(candidate-reference) <= atol + rtol*abs(reference)",
+            "rtol": args.rtol,
+            "atol": args.atol,
+        },
         "files": len(reference_files),
         "tokens": 0,
-        "max_absolute_error": 0.0,
-        "max_relative_error": 0.0,
-        "errors": [],
+        "violations": 0,
+        "max_absolute_error": None,
+        "max_relative_error": None,
+        "relative_l2_error": None,
+        "violation_examples": examples,
+        "structural_errors": structural_errors,
     }
-    errors: list[str] = report["errors"]  # type: ignore[assignment]
 
     if not reference_files:
-        errors.append("The reference tree contains no .vtk files.")
+        structural_errors.append("The reference tree contains no .vtk files.")
 
     missing = sorted(set(reference_files) - set(candidate_files))
     extra = sorted(set(candidate_files) - set(reference_files))
     if missing:
-        errors.append("Missing candidate files: " + ", ".join(missing))
+        structural_errors.append("Missing candidate files: " + ", ".join(missing))
     if extra:
-        errors.append("Unexpected candidate files: " + ", ".join(extra))
+        structural_errors.append("Unexpected candidate files: " + ", ".join(extra))
+
+    squared_error = 0.0
+    squared_reference = 0.0
+    max_absolute = -1.0
+    max_relative = -1.0
 
     for relative in sorted(set(reference_files) & set(candidate_files)):
         expected = numbers(reference_files[relative])
         actual = numbers(candidate_files[relative])
         if len(expected) != len(actual):
-            errors.append(
+            structural_errors.append(
                 f"{relative}: numeric token count differs "
                 f"({len(expected)} != {len(actual)})"
             )
@@ -78,29 +100,48 @@ def main() -> int:
         for index, (left, right) in enumerate(zip(expected, actual)):
             if not (math.isfinite(left) and math.isfinite(right)):
                 if left != right:
-                    errors.append(f"{relative}: non-finite value differs at token {index}")
-                    break
+                    structural_errors.append(
+                        f"{relative}: non-finite value differs at token {index}"
+                    )
                 continue
 
             absolute = abs(left - right)
             relative_error = absolute / max(abs(left), args.atol)
-            report["max_absolute_error"] = max(float(report["max_absolute_error"]), absolute)
-            report["max_relative_error"] = max(float(report["max_relative_error"]), relative_error)
+            squared_error += absolute * absolute
+            squared_reference += left * left
+
+            if absolute > max_absolute:
+                max_absolute = absolute
+                report["max_absolute_error"] = location(
+                    relative, index, left, right, absolute
+                )
+            if relative_error > max_relative:
+                max_relative = relative_error
+                relative_location = location(relative, index, left, right, absolute)
+                relative_location["relative_error"] = relative_error
+                report["max_relative_error"] = relative_location
 
             if absolute > args.atol + args.rtol * abs(left):
-                errors.append(
-                    f"{relative}: tolerance exceeded at token {index}: "
-                    f"reference={left:.17g}, candidate={right:.17g}, "
-                    f"abs={absolute:.3e}"
-                )
-                break
+                report["violations"] = int(report["violations"]) + 1
+                if len(examples) < 20:
+                    item = location(relative, index, left, right, absolute)
+                    item["allowed_error"] = args.atol + args.rtol * abs(left)
+                    examples.append(item)
+
+    if squared_reference > 0.0:
+        report["relative_l2_error"] = math.sqrt(squared_error / squared_reference)
+    elif squared_error == 0.0:
+        report["relative_l2_error"] = 0.0
+
+    failed = bool(structural_errors) or int(report["violations"]) > 0
+    report["status"] = "failed" if failed else "passed"
 
     output = json.dumps(report, indent=2, sort_keys=True)
     print(output)
     if args.report:
         args.report.write_text(output + "\n", encoding="utf-8")
 
-    return 1 if errors else 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

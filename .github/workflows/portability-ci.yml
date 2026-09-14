@@ -147,6 +147,7 @@ jobs:
             --report portability-windows.json
 
       - name: Record Windows environment
+        if: always()
         shell: msys2 {0}
         run: |
           gfortran --version > environment-windows.txt
@@ -154,6 +155,7 @@ jobs:
           pacman -Q >> environment-windows.txt
 
       - name: Upload Windows evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: windows-portability-evidence

@@ -5,3 +5,8 @@ BESLE_ROOT/OOC/
 BESLE_ROOT/Results/
 *.mod
 *.o
+dist/
+packaging/windows/stage/
+packaging-tests/
+runtime-dependencies.txt
+packaged-windows.json

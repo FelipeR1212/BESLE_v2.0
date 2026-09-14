@@ -13,6 +13,9 @@ permissions:
 env:
   BESLE_MAX_STEPS: "1"
   OMP_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+  GOTO_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
 
 jobs:
   linux-reference:

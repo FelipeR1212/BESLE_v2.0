@@ -1,0 +1,112 @@
+[CmdletBinding()]
+param(
+    [ValidateSet("Quick", "Full")]
+    [string]$Mode,
+    [string]$OutputRoot,
+    [switch]$NoPause
+)
+
+$ErrorActionPreference = "Stop"
+$version = "@PROJECT_VERSION@"
+$appRoot = $PSScriptRoot
+$executable = Join-Path $appRoot "BESLE.exe"
+$mpiExecutable = Join-Path ([Environment]::GetFolderPath("ProgramFiles")) "Microsoft MPI\Bin\mpiexec.exe"
+
+function Wait-Besle {
+    if (-not $NoPause) {
+        [void](Read-Host "Presione Enter para cerrar")
+    }
+}
+
+try {
+    if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+        throw "No se encontro BESLE.exe en $appRoot."
+    }
+
+    if (-not (Test-Path -LiteralPath $mpiExecutable -PathType Leaf)) {
+        throw "No se encontro Microsoft MPI. Repare o vuelva a instalar BESLE."
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Mode)) {
+        Write-Host ""
+        Write-Host "BESLE $version"
+        Write-Host "1. Prueba rapida (un paso)"
+        Write-Host "2. Simulacion completa (200 pasos)"
+        $selection = Read-Host "Seleccione 1 o 2"
+        if ($selection -eq "2") {
+            $Mode = "Full"
+        }
+        else {
+            $Mode = "Quick"
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
+        $documents = [Environment]::GetFolderPath("MyDocuments")
+        $OutputRoot = Join-Path $documents "BESLE\$version\runs"
+    }
+
+    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $runName = "$timestamp-$($Mode.ToLowerInvariant())"
+    $runDirectory = Join-Path $OutputRoot $runName
+    [void](New-Item -ItemType Directory -Path $runDirectory -Force)
+
+    foreach ($directoryName in @("Body_forces", "Cracks", "Material", "Mesh")) {
+        $source = Join-Path $appRoot $directoryName
+        if (-not (Test-Path -LiteralPath $source -PathType Container)) {
+            throw "Falta el directorio de entrada $directoryName."
+        }
+        Copy-Item -LiteralPath $source -Destination $runDirectory -Recurse -Force
+    }
+
+    [void](New-Item -ItemType Directory -Path (Join-Path $runDirectory "Results") -Force)
+    [void](New-Item -ItemType Directory -Path (Join-Path $runDirectory "OOC") -Force)
+
+    $env:OMP_NUM_THREADS = "1"
+    $env:OPENBLAS_NUM_THREADS = "1"
+    $env:GOTO_NUM_THREADS = "1"
+    $env:MKL_NUM_THREADS = "1"
+
+    if ($Mode -eq "Quick") {
+        $env:BESLE_MAX_STEPS = "1"
+    }
+    else {
+        Remove-Item Env:BESLE_MAX_STEPS -ErrorAction SilentlyContinue
+    }
+
+    $logPath = Join-Path $runDirectory "BESLE.log"
+    Push-Location $runDirectory
+    try {
+        Write-Host ""
+        Write-Host "Ejecutando BESLE en:"
+        Write-Host "  $runDirectory"
+        Write-Host ""
+        & $mpiExecutable -n 2 $executable 2>&1 | Tee-Object -FilePath $logPath
+        if ($LASTEXITCODE -ne 0) {
+            throw "BESLE termino con el codigo $LASTEXITCODE. Consulte $logPath."
+        }
+    }
+    finally {
+        Pop-Location
+    }
+
+    $vtkFiles = @(Get-ChildItem -LiteralPath (Join-Path $runDirectory "Results") -Filter "Results_*.vtk" -File)
+    if ($vtkFiles.Count -eq 0) {
+        throw "La ejecucion termino sin producir archivos VTK."
+    }
+
+    Write-Host ""
+    Write-Host "Ejecucion terminada correctamente."
+    Write-Host "Resultados: $(Join-Path $runDirectory 'Results')"
+    Write-Host "Registro:   $logPath"
+    Write-Host ""
+    Wait-Besle
+    exit 0
+}
+catch {
+    Write-Host ""
+    Write-Error $_
+    Write-Host ""
+    Wait-Besle
+    exit 1
+}

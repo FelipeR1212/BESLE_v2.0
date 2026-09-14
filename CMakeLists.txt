@@ -90,6 +90,22 @@ endforeach()
 install(FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
     "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
+    "${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY_NOTICES.md"
     "${CMAKE_CURRENT_SOURCE_DIR}/BESLE_ROOT/VERSION"
     DESTINATION "."
 )
+
+if(WIN32)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/packaging")
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/run-besle.ps1.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/packaging/run-besle.ps1"
+        @ONLY
+    )
+    install(
+        FILES
+            "${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/run-besle.cmd"
+            "${CMAKE_CURRENT_BINARY_DIR}/packaging/run-besle.ps1"
+        DESTINATION "."
+    )
+endif()

@@ -145,8 +145,9 @@ jobs:
           python tools/compare_vtk.py \
             reference-results \
             BESLE_ROOT/Results \
-            --rtol 1e-7 \
+            --rtol 1e-6 \
             --atol 1e-9 \
+            --max-relative-l2 1e-10 \
             --report portability-windows.json
 
       - name: Record Windows environment

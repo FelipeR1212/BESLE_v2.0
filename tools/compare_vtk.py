@@ -45,8 +45,18 @@ def main() -> int:
     parser.add_argument("candidate", type=Path)
     parser.add_argument("--rtol", type=float, default=1.0e-7)
     parser.add_argument("--atol", type=float, default=1.0e-9)
+    parser.add_argument(
+        "--max-relative-l2",
+        type=float,
+        help="Fail when the relative L2 error exceeds this value.",
+    )
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
+
+    if args.rtol < 0.0 or args.atol < 0.0:
+        parser.error("rtol and atol must be non-negative")
+    if args.max_relative_l2 is not None and args.max_relative_l2 < 0.0:
+        parser.error("max-relative-l2 must be non-negative")
 
     reference_files = vtk_files(args.reference)
     candidate_files = vtk_files(args.candidate)
@@ -60,6 +70,7 @@ def main() -> int:
             "formula": "abs(candidate-reference) <= atol + rtol*abs(reference)",
             "rtol": args.rtol,
             "atol": args.atol,
+            "max_relative_l2": args.max_relative_l2,
         },
         "files": len(reference_files),
         "tokens": 0,
@@ -67,6 +78,7 @@ def main() -> int:
         "max_absolute_error": None,
         "max_relative_error": None,
         "relative_l2_error": None,
+        "relative_l2_limit_exceeded": False,
         "violation_examples": examples,
         "structural_errors": structural_errors,
     }
@@ -133,7 +145,18 @@ def main() -> int:
     elif squared_error == 0.0:
         report["relative_l2_error"] = 0.0
 
-    failed = bool(structural_errors) or int(report["violations"]) > 0
+    relative_l2 = report["relative_l2_error"]
+    l2_limit_exceeded = (
+        args.max_relative_l2 is not None
+        and (relative_l2 is None or float(relative_l2) > args.max_relative_l2)
+    )
+    report["relative_l2_limit_exceeded"] = l2_limit_exceeded
+
+    failed = (
+        bool(structural_errors)
+        or int(report["violations"]) > 0
+        or l2_limit_exceeded
+    )
     report["status"] = "failed" if failed else "passed"
 
     output = json.dumps(report, indent=2, sort_keys=True)

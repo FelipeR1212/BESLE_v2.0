@@ -10,8 +10,10 @@ Microsoft MPI plus the MSYS2 parallel MUMPS package. GitHub Actions builds and
 runs the same one-step reference case on Ubuntu and Windows, then compares every
 numeric token in the generated VTK files.
 
-This is development documentation. A user-facing installer will be generated
-only after the native Windows equivalence job passes.
+This is development documentation. The Windows Installer workflow now produces
+an unsigned setup executable and validates its complete install/run/uninstall
+cycle. It remains a development artifact until physical Windows acceptance is
+recorded.
 
 ## Developer build
 

@@ -118,7 +118,13 @@ def main() -> int:
                 continue
 
             absolute = abs(left - right)
-            relative_error = absolute / max(abs(left), args.atol)
+            relative_scale = max(abs(left), args.atol)
+            if relative_scale > 0.0:
+                relative_error = absolute / relative_scale
+            elif absolute == 0.0:
+                relative_error = 0.0
+            else:
+                relative_error = math.inf
             squared_error += absolute * absolute
             squared_reference += left * left
 

@@ -1,0 +1,29 @@
+! BESLE runtime configuration.
+! Edit this file, save it, and run BESLE again. Recompilation is not required.
+! Paths may use forward slashes on Linux and Windows and are relative to the
+! directory where BESLE is run.
+&BESLE_CONFIG
+    mesh_file = 'Transient'
+    fileplace_mesh = 'Mesh/Box/'
+    scale_size_1 = 1.0000000474974513d-3
+
+    material_coefficients_file = 'Material_9'
+    fileplace_material = 'Material/Data/Isotropic/'
+    scale_prop_mat = 1.0000000000000000d6
+
+    transient = 1
+    time_steps = 200
+    dt = 9.9999999747524271d-7
+    density = 7.8500000000000000d3
+
+    load_profile = 'harmonic'
+    omega = 7.8493781250000000d4
+    phase = 0.0000000000000000d0
+
+    ! Six components per face: value and activation flags used by BESLE.
+    box_face_2 = 1.0000000000000000d8, 1.0d0, 0.0d0, 1.0d0, 0.0d0, 1.0d0
+    box_face_4 = 0.0d0, 0.0d0, 0.0d0, 0.0d0, 0.0d0, 0.0d0
+
+    results_file = 'Results'
+    fileplace_results = 'Results/'
+/

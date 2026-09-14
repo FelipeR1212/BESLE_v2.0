@@ -1,8 +1,9 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("Quick", "Full")]
+    [ValidateSet("Quick", "Full", "Configured")]
     [string]$Mode,
     [string]$OutputRoot,
+    [string]$ProjectPath,
     [switch]$NoPause
 )
 
@@ -10,11 +11,146 @@ $ErrorActionPreference = "Stop"
 $version = "@PROJECT_VERSION@"
 $appRoot = $PSScriptRoot
 $executable = Join-Path $appRoot "BESLE.exe"
+$templateConfig = Join-Path $appRoot "BESLE.nml"
 $mpiExecutable = Join-Path ([Environment]::GetFolderPath("ProgramFiles")) "Microsoft MPI\Bin\mpiexec.exe"
 
 function Wait-Besle {
     if (-not $NoPause) {
         [void](Read-Host "Presione Enter para cerrar")
+    }
+}
+
+function Get-DefaultOutputRoot {
+    $documents = [Environment]::GetFolderPath("MyDocuments")
+    return Join-Path $documents "BESLE\$version\runs"
+}
+
+function Get-UniqueDirectory {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Parent,
+        [Parameter(Mandatory = $true)]
+        [string]$BaseName
+    )
+
+    $candidate = Join-Path $Parent $BaseName
+    $counter = 1
+    while (Test-Path -LiteralPath $candidate) {
+        $candidate = Join-Path $Parent "$BaseName-$counter"
+        $counter++
+    }
+    return $candidate
+}
+
+function Write-ProjectHelpers {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RunDirectory
+    )
+
+    $launcher = Join-Path $appRoot "run-besle.ps1"
+    $runHelper = @"
+@echo off
+title BESLE - ejecutar simulacion configurada
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$launcher" -Mode Configured -ProjectPath "%~dp0" -NoPause
+echo.
+if errorlevel 1 echo La simulacion termino con errores. Revise BESLE.log.
+pause
+"@
+    $editHelper = @"
+@echo off
+start "" notepad.exe "%~dp0BESLE.nml"
+"@
+
+    Set-Content -LiteralPath (Join-Path $RunDirectory "run-this-simulation.cmd") `
+        -Value $runHelper -Encoding ascii
+    Set-Content -LiteralPath (Join-Path $RunDirectory "edit-BESLE-parameters.cmd") `
+        -Value $editHelper -Encoding ascii
+}
+
+function New-BesleProject {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RunsRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$RunMode
+    )
+
+    if (-not (Test-Path -LiteralPath $templateConfig -PathType Leaf)) {
+        throw "No se encontro la plantilla BESLE.nml en $appRoot."
+    }
+
+    [void](New-Item -ItemType Directory -Path $RunsRoot -Force)
+    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $runName = "$timestamp-$($RunMode.ToLowerInvariant())"
+    $runDirectory = Get-UniqueDirectory -Parent $RunsRoot -BaseName $runName
+    [void](New-Item -ItemType Directory -Path $runDirectory)
+
+    foreach ($directoryName in @("Body_forces", "Cracks", "Material", "Mesh")) {
+        $source = Join-Path $appRoot $directoryName
+        if (-not (Test-Path -LiteralPath $source -PathType Container)) {
+            throw "Falta el directorio de entrada $directoryName."
+        }
+        Copy-Item -LiteralPath $source -Destination $runDirectory -Recurse
+    }
+
+    Copy-Item -LiteralPath $templateConfig -Destination (Join-Path $runDirectory "BESLE.nml")
+    Write-ProjectHelpers -RunDirectory $runDirectory
+    return $runDirectory
+}
+
+function Get-LatestProject {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RunsRoot
+    )
+
+    if (-not (Test-Path -LiteralPath $RunsRoot -PathType Container)) {
+        return $null
+    }
+
+    return Get-ChildItem -LiteralPath $RunsRoot -Directory |
+        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "BESLE.nml") -PathType Leaf } |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+}
+
+function Archive-PreviousRun {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RunDirectory
+    )
+
+    $itemsToArchive = @("Results", "OOC", "BESLE.log", "BESLE-used.nml") |
+        ForEach-Object { Join-Path $RunDirectory $_ } |
+        Where-Object { Test-Path -LiteralPath $_ }
+
+    $hasPreviousOutput = $false
+    foreach ($item in $itemsToArchive) {
+        if ((Get-Item -LiteralPath $item).PSIsContainer) {
+            if (@(Get-ChildItem -LiteralPath $item -Force).Count -gt 0) {
+                $hasPreviousOutput = $true
+            }
+        }
+        else {
+            $hasPreviousOutput = $true
+        }
+    }
+
+    if (-not $hasPreviousOutput) {
+        return
+    }
+
+    $historyRoot = Join-Path $RunDirectory "history"
+    [void](New-Item -ItemType Directory -Path $historyRoot -Force)
+    $archiveName = Get-Date -Format "yyyyMMdd-HHmmss"
+    $archiveDirectory = Get-UniqueDirectory -Parent $historyRoot -BaseName $archiveName
+    [void](New-Item -ItemType Directory -Path $archiveDirectory)
+
+    foreach ($item in $itemsToArchive) {
+        if (Test-Path -LiteralPath $item) {
+            Move-Item -LiteralPath $item -Destination $archiveDirectory
+        }
     }
 }
 
@@ -27,45 +163,66 @@ try {
         throw "No se encontro Microsoft MPI. Repare o vuelva a instalar BESLE."
     }
 
+    if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
+        $OutputRoot = Get-DefaultOutputRoot
+    }
+
     if ([string]::IsNullOrWhiteSpace($Mode)) {
         Write-Host ""
         Write-Host "BESLE $version"
-        Write-Host "1. Prueba rapida (un paso)"
-        Write-Host "2. Simulacion completa (200 pasos)"
-        $selection = Read-Host "Seleccione 1 o 2"
-        if ($selection -eq "2") {
-            $Mode = "Full"
-        }
-        else {
-            $Mode = "Quick"
+        Write-Host "1. Nueva prueba rapida (un paso)"
+        Write-Host "2. Nueva simulacion con BESLE.nml"
+        Write-Host "3. Editar o repetir el proyecto mas reciente"
+        Write-Host "4. Abrir la carpeta de proyectos"
+        $selection = Read-Host "Seleccione 1, 2, 3 o 4"
+
+        switch ($selection) {
+            "2" { $Mode = "Full" }
+            "3" {
+                $latestProject = Get-LatestProject -RunsRoot $OutputRoot
+                if ($null -eq $latestProject) {
+                    throw "No hay proyectos anteriores en $OutputRoot."
+                }
+                $Mode = "Configured"
+                $ProjectPath = $latestProject.FullName
+                $latestConfig = Join-Path $ProjectPath "BESLE.nml"
+                Start-Process -FilePath notepad.exe -ArgumentList "`"$latestConfig`"" -Wait
+            }
+            "4" {
+                [void](New-Item -ItemType Directory -Path $OutputRoot -Force)
+                Start-Process explorer.exe -ArgumentList $OutputRoot
+                exit 0
+            }
+            default { $Mode = "Quick" }
         }
     }
 
-    if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
-        $documents = [Environment]::GetFolderPath("MyDocuments")
-        $OutputRoot = Join-Path $documents "BESLE\$version\runs"
+    if ([string]::IsNullOrWhiteSpace($ProjectPath)) {
+        $runDirectory = New-BesleProject -RunsRoot $OutputRoot -RunMode $Mode
     }
-
-    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $runName = "$timestamp-$($Mode.ToLowerInvariant())"
-    $runDirectory = Join-Path $OutputRoot $runName
-    [void](New-Item -ItemType Directory -Path $runDirectory -Force)
-
-    foreach ($directoryName in @("Body_forces", "Cracks", "Material", "Mesh")) {
-        $source = Join-Path $appRoot $directoryName
-        if (-not (Test-Path -LiteralPath $source -PathType Container)) {
-            throw "Falta el directorio de entrada $directoryName."
+    else {
+        $runDirectory = [IO.Path]::GetFullPath($ProjectPath)
+        if (-not (Test-Path -LiteralPath $runDirectory -PathType Container)) {
+            throw "No existe el proyecto $runDirectory."
         }
-        Copy-Item -LiteralPath $source -Destination $runDirectory -Recurse -Force
+        Write-ProjectHelpers -RunDirectory $runDirectory
     }
 
+    $configPath = Join-Path $runDirectory "BESLE.nml"
+    if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
+        throw "El proyecto no contiene BESLE.nml: $runDirectory."
+    }
+
+    Archive-PreviousRun -RunDirectory $runDirectory
     [void](New-Item -ItemType Directory -Path (Join-Path $runDirectory "Results") -Force)
     [void](New-Item -ItemType Directory -Path (Join-Path $runDirectory "OOC") -Force)
+    Copy-Item -LiteralPath $configPath -Destination (Join-Path $runDirectory "BESLE-used.nml") -Force
 
     $env:OMP_NUM_THREADS = "1"
     $env:OPENBLAS_NUM_THREADS = "1"
     $env:GOTO_NUM_THREADS = "1"
     $env:MKL_NUM_THREADS = "1"
+    $env:BESLE_CONFIG_FILE = $configPath
 
     if ($Mode -eq "Quick") {
         $env:BESLE_MAX_STEPS = "1"
@@ -80,6 +237,8 @@ try {
         Write-Host ""
         Write-Host "Ejecutando BESLE en:"
         Write-Host "  $runDirectory"
+        Write-Host "Configuracion:"
+        Write-Host "  $configPath"
         Write-Host ""
         & $mpiExecutable -n 2 $executable 2>&1 | Tee-Object -FilePath $logPath
         if ($LASTEXITCODE -ne 0) {
@@ -97,8 +256,13 @@ try {
 
     Write-Host ""
     Write-Host "Ejecucion terminada correctamente."
-    Write-Host "Resultados: $(Join-Path $runDirectory 'Results')"
-    Write-Host "Registro:   $logPath"
+    Write-Host "Proyecto:      $runDirectory"
+    Write-Host "Parametros:    $configPath"
+    Write-Host "Resultados:    $(Join-Path $runDirectory 'Results')"
+    Write-Host "Registro:      $logPath"
+    Write-Host ""
+    Write-Host "Para cambiar la simulacion: abra BESLE.nml, guarde y ejecute"
+    Write-Host "run-this-simulation.cmd. No necesita recompilar."
     Write-Host ""
     Wait-Besle
     exit 0

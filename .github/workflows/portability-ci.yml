@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/windows-portability
+      - feature/runtime-configuration
   pull_request:
   workflow_dispatch:
 
@@ -12,6 +13,7 @@ permissions:
 
 env:
   BESLE_MAX_STEPS: "1"
+  BESLE_PORTABILITY_BASELINE: "78be7d93d60b85d8a66066f9b40c610461eb0b09"
   OMP_NUM_THREADS: "1"
   OPENBLAS_NUM_THREADS: "1"
   GOTO_NUM_THREADS: "1"
@@ -19,12 +21,14 @@ env:
 
 jobs:
   linux-reference:
-    name: Linux reference
+    name: Linux reference and runtime configuration
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install numerical dependencies
         run: |
@@ -35,50 +39,130 @@ jobs:
             libmumps-dev libscalapack-openmpi-dev \
             libopenblas-dev liblapack-dev
 
-      - name: Configure
+      - name: Configure current version
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_Fortran_COMPILER=mpifort
 
-      - name: Build
+      - name: Build current version once
         run: cmake --build build --parallel 2
 
-      - name: Run one-step reference
+      - name: Run default external configuration
         working-directory: BESLE_ROOT
         run: |
           rm -rf Results OOC
-          mkdir -p Results OOC
+          mkdir -p Results OOC ../validation/default-results
           mpiexec -n 2 ../build/bin/BESLE
+          cp Results/*.vtk ../validation/default-results/
+
+      - name: Build published-code baseline
+        run: |
+          git worktree add baseline "$BESLE_PORTABILITY_BASELINE"
+          cmake -S baseline -B baseline/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_Fortran_COMPILER=mpifort
+          cmake --build baseline/build --parallel 2
+
+      - name: Verify default configuration against baseline
+        run: |
+          rm -rf baseline/BESLE_ROOT/Results baseline/BESLE_ROOT/OOC
+          mkdir -p baseline/BESLE_ROOT/Results baseline/BESLE_ROOT/OOC
+          (
+            cd baseline/BESLE_ROOT
+            mpiexec -n 2 ../build/bin/BESLE
+          )
+          python tools/compare_vtk.py \
+            baseline/BESLE_ROOT/Results \
+            validation/default-results \
+            --rtol 0 \
+            --atol 0 \
+            --max-relative-l2 0 \
+            --report validation/default-regression.json
+
+      - name: Change load without rebuilding
+        run: |
+          rm -rf validation/modified-project
+          mkdir -p validation/modified-project/Results validation/modified-project/OOC
+          cp -r BESLE_ROOT/Body_forces BESLE_ROOT/Cracks BESLE_ROOT/Material \
+            BESLE_ROOT/Mesh validation/modified-project/
+          cp BESLE_ROOT/BESLE.nml validation/modified-project/BESLE.nml
+          sed -i 's/1.0000000000000000d8/5.0000000000000000d7/' \
+            validation/modified-project/BESLE.nml
+          grep -q '5.0000000000000000d7' validation/modified-project/BESLE.nml
+          (
+            cd validation/modified-project
+            BESLE_CONFIG_FILE="$PWD/BESLE.nml" mpiexec -n 2 ../../build/bin/BESLE
+          )
+          if cmp -s validation/default-results/Results_1.vtk \
+            validation/modified-project/Results/Results_1.vtk; then
+            echo "Changing BESLE.nml did not change the numerical result." >&2
+            exit 1
+          fi
+
+      - name: Reject an invalid external configuration
+        run: |
+          rm -rf validation/invalid-project
+          cp -r validation/modified-project validation/invalid-project
+          rm -rf validation/invalid-project/Results validation/invalid-project/OOC
+          mkdir -p validation/invalid-project/Results validation/invalid-project/OOC
+          sed -i 's/dt = 9.9999999747524271d-7/dt = -1.0d-6/' \
+            validation/invalid-project/BESLE.nml
+          set +e
+          (
+            cd validation/invalid-project
+            BESLE_CONFIG_FILE="$PWD/BESLE.nml" mpiexec -n 2 ../../build/bin/BESLE
+          ) > validation/invalid-config.log 2>&1
+          status=$?
+          set -e
+          if [[ $status -eq 0 ]]; then
+            echo "BESLE accepted an invalid negative time step." >&2
+            exit 1
+          fi
+          grep -q 'ERROR DE CONFIGURACION BESLE' validation/invalid-config.log
 
       - name: Record Linux environment
         run: |
-          gfortran --version > environment-linux.txt
-          cmake --version >> environment-linux.txt
-          mpiexec --version >> environment-linux.txt
+          gfortran --version > validation/environment-linux.txt
+          cmake --version >> validation/environment-linux.txt
+          mpiexec --version >> validation/environment-linux.txt
           dpkg-query -W gfortran openmpi-bin libopenmpi-dev libmumps-dev \
-            libscalapack-openmpi-dev libopenblas-dev >> environment-linux.txt
+            libscalapack-openmpi-dev libopenblas-dev >> validation/environment-linux.txt
 
-      - name: Upload Linux numerical reference
+      - name: Upload Linux default reference
         uses: actions/upload-artifact@v4
         with:
           name: linux-reference-vtk
-          path: BESLE_ROOT/Results/**/*.vtk
+          path: validation/default-results/**/*.vtk
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload Linux environment
+      - name: Upload Linux modified reference
         uses: actions/upload-artifact@v4
         with:
-          name: linux-environment
-          path: environment-linux.txt
+          name: linux-modified-vtk
+          path: validation/modified-project/Results/**/*.vtk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Linux validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-runtime-configuration-evidence
+          path: |
+            validation/default-regression.json
+            validation/modified-project/BESLE.nml
+            validation/invalid-config.log
+            validation/environment-linux.txt
+          if-no-files-found: warn
           retention-days: 14
 
   windows-native:
     name: Windows native and equivalence
     needs: linux-reference
     runs-on: windows-2022
-    timeout-minutes: 45
+    timeout-minutes: 50
 
     steps:
       - uses: actions/checkout@v4
@@ -121,11 +205,11 @@ jobs:
             -DCMAKE_Fortran_COMPILER=/ucrt64/bin/mpifort.exe \
             -DCMAKE_PREFIX_PATH=/ucrt64
 
-      - name: Build
+      - name: Build once
         shell: msys2 {0}
         run: cmake --build build --parallel 2
 
-      - name: Run one-step Windows case
+      - name: Run default Windows configuration
         shell: msys2 {0}
         working-directory: BESLE_ROOT
         run: |
@@ -133,22 +217,50 @@ jobs:
           mkdir -p Results OOC
           "/c/Program Files/Microsoft MPI/Bin/mpiexec.exe" -n 2 ../build/bin/BESLE.exe
 
-      - name: Download Linux reference
+      - name: Change load without rebuilding on Windows
+        shell: msys2 {0}
+        run: |
+          rm -rf validation/modified-project
+          mkdir -p validation/modified-project/Results validation/modified-project/OOC
+          cp -r BESLE_ROOT/Body_forces BESLE_ROOT/Cracks BESLE_ROOT/Material \
+            BESLE_ROOT/Mesh validation/modified-project/
+          cp BESLE_ROOT/BESLE.nml validation/modified-project/BESLE.nml
+          sed -i 's/1.0000000000000000d8/5.0000000000000000d7/' \
+            validation/modified-project/BESLE.nml
+          (
+            cd validation/modified-project
+            BESLE_CONFIG_FILE="$PWD/BESLE.nml" \
+              "/c/Program Files/Microsoft MPI/Bin/mpiexec.exe" -n 2 ../../build/bin/BESLE.exe
+          )
+          if cmp -s BESLE_ROOT/Results/Results_1.vtk \
+            validation/modified-project/Results/Results_1.vtk; then
+            echo "Changing BESLE.nml did not change the Windows result." >&2
+            exit 1
+          fi
+
+      - name: Download Linux references
         uses: actions/download-artifact@v4
         with:
-          name: linux-reference-vtk
-          path: reference-results
+          pattern: linux-*-vtk
+          path: references
 
-      - name: Compare Windows against Linux
+      - name: Compare Windows default and modified cases against Linux
         shell: msys2 {0}
         run: |
           python tools/compare_vtk.py \
-            reference-results \
+            references/linux-reference-vtk \
             BESLE_ROOT/Results \
             --rtol 1e-6 \
             --atol 1e-9 \
             --max-relative-l2 1e-10 \
-            --report portability-windows.json
+            --report portability-windows-default.json
+          python tools/compare_vtk.py \
+            references/linux-modified-vtk \
+            validation/modified-project/Results \
+            --rtol 1e-6 \
+            --atol 1e-9 \
+            --max-relative-l2 1e-10 \
+            --report portability-windows-modified.json
 
       - name: Record Windows environment
         if: always()
@@ -165,7 +277,10 @@ jobs:
           name: windows-portability-evidence
           path: |
             BESLE_ROOT/Results/**/*.vtk
-            portability-windows.json
+            validation/modified-project/Results/**/*.vtk
+            validation/modified-project/BESLE.nml
+            portability-windows-default.json
+            portability-windows-modified.json
             environment-windows.txt
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14

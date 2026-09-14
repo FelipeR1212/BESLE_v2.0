@@ -72,7 +72,7 @@ PROGRAM Main
 
 	CALL Check_Size_nt(nt)
 
-	CALL Setup
+	CALL Setup(me)
 
     !0. Matrices of integration points
     CALL Integration_Points(me,ts0)
@@ -248,7 +248,6 @@ PROGRAM Main
     CALL MPI_FINALIZE(mpierr)
 
 END PROGRAM Main
-
 
 
 

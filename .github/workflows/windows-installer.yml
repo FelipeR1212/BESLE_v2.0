@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/windows-portability
+      - feature/runtime-configuration
   workflow_dispatch:
 
 permissions:
@@ -147,6 +148,11 @@ jobs:
           if ($null -eq $resultDirectory) {
             throw "The staged launcher did not create a run directory."
           }
+          foreach ($requiredFile in @("BESLE.nml", "BESLE-used.nml", "run-this-simulation.cmd", "edit-BESLE-parameters.cmd")) {
+            if (-not (Test-Path -LiteralPath (Join-Path $resultDirectory.FullName $requiredFile) -PathType Leaf)) {
+              throw "The staged project is missing $requiredFile."
+            }
+          }
           Copy-Item -LiteralPath (Join-Path $resultDirectory.FullName "Results") -Destination (Join-Path $env:GITHUB_WORKSPACE "packaging-tests\staged-results") -Recurse
 
       - name: Ensure Inno Setup compiler
@@ -210,8 +216,13 @@ jobs:
           if (-not (Test-Path -LiteralPath (Join-Path $installDirectory "BESLE.exe") -PathType Leaf)) {
             throw "BESLE.exe was not installed."
           }
+          if (-not (Test-Path -LiteralPath (Join-Path $installDirectory "BESLE.nml") -PathType Leaf)) {
+            throw "The editable BESLE.nml template was not installed."
+          }
 
           "BESLE_TEST_INSTALL_DIR=$installDirectory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $executableHash = (Get-FileHash -LiteralPath (Join-Path $installDirectory "BESLE.exe") -Algorithm SHA256).Hash
+          "BESLE_INSTALLED_EXE_HASH=$executableHash" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Run installed application without build tools on PATH
         shell: pwsh
@@ -252,7 +263,7 @@ jobs:
           Copy-Item -LiteralPath $results -Destination $evidence -Recurse
           Copy-Item -LiteralPath (Join-Path $runDirectory.FullName "BESLE.log") -Destination (Join-Path $env:GITHUB_WORKSPACE "packaging-tests\installed-BESLE.log")
 
-          "BESLE_USER_VTK=$($vtk[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "BESLE_USER_PROJECT=$($runDirectory.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Compare packaged result with pre-install result
         shell: msys2 {0}
@@ -263,6 +274,77 @@ jobs:
             --rtol 1e-12 \
             --atol 1e-12 \
             --report packaged-windows.json
+
+      - name: Edit project configuration and rerun installed executable
+        shell: pwsh
+        run: |
+          $project = $env:BESLE_USER_PROJECT
+          $config = Join-Path $project "BESLE.nml"
+          $original = [IO.File]::ReadAllText($config)
+          $modified = $original.Replace("1.0000000000000000d8", "5.0000000000000000d7")
+          if ($modified -eq $original) {
+            throw "The reference load was not found in BESLE.nml."
+          }
+          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+          [IO.File]::WriteAllText($config, $modified, $utf8NoBom)
+
+          $systemPowerShell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+          $env:PATH = @(
+            (Join-Path $env:SystemRoot "System32"),
+            $env:SystemRoot,
+            (Join-Path $env:SystemRoot "System32\Wbem"),
+            (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0")
+          ) -join ";"
+          $launcherArguments = @(
+            "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass",
+            "-File", (Join-Path $env:BESLE_TEST_INSTALL_DIR "run-besle.ps1"),
+            "-Mode", "Configured", "-ProjectPath", $project, "-NoPause"
+          )
+
+          & $systemPowerShell @launcherArguments
+          if ($LASTEXITCODE -ne 0) {
+            throw "Rerunning the edited project failed with exit code $LASTEXITCODE"
+          }
+
+          $currentHash = (Get-FileHash -LiteralPath (Join-Path $env:BESLE_TEST_INSTALL_DIR "BESLE.exe") -Algorithm SHA256).Hash
+          if ($currentHash -ne $env:BESLE_INSTALLED_EXE_HASH) {
+            throw "BESLE.exe changed while editing runtime parameters."
+          }
+
+          $archive = Get-ChildItem -LiteralPath (Join-Path $project "history") -Directory |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if ($null -eq $archive) {
+            throw "The previous run was not archived."
+          }
+
+          $oldVtk = @(Get-ChildItem -LiteralPath (Join-Path $archive.FullName "Results") -Filter "Results_*.vtk" -File)
+          $newVtk = @(Get-ChildItem -LiteralPath (Join-Path $project "Results") -Filter "Results_*.vtk" -File)
+          if (($oldVtk.Count -eq 0) -or ($newVtk.Count -eq 0)) {
+            throw "The before/after VTK evidence is incomplete."
+          }
+          if ((Get-FileHash -LiteralPath $oldVtk[0].FullName -Algorithm SHA256).Hash -eq
+              (Get-FileHash -LiteralPath $newVtk[0].FullName -Algorithm SHA256).Hash) {
+            throw "Editing BESLE.nml did not change the installed simulation result."
+          }
+
+          $usedConfig = Join-Path $project "BESLE-used.nml"
+          if ((Get-FileHash -LiteralPath $config -Algorithm SHA256).Hash -ne
+              (Get-FileHash -LiteralPath $usedConfig -Algorithm SHA256).Hash) {
+            throw "BESLE-used.nml does not match the configuration used for the rerun."
+          }
+
+          $evidenceRoot = Join-Path $env:GITHUB_WORKSPACE "packaging-tests\runtime-edit"
+          New-Item -ItemType Directory -Path $evidenceRoot -Force | Out-Null
+          Copy-Item -LiteralPath $config -Destination (Join-Path $evidenceRoot "BESLE.nml")
+          Copy-Item -LiteralPath $usedConfig -Destination (Join-Path $evidenceRoot "BESLE-used.nml")
+          Copy-Item -LiteralPath (Join-Path $project "BESLE.log") -Destination (Join-Path $evidenceRoot "BESLE.log")
+          Copy-Item -LiteralPath (Join-Path $project "Results") -Destination (Join-Path $evidenceRoot "modified-results") -Recurse
+          Copy-Item -LiteralPath (Join-Path $archive.FullName "Results") -Destination (Join-Path $evidenceRoot "previous-results") -Recurse
+
+          "BESLE_USER_CONFIG=$config" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "BESLE_USER_VTK=$($newVtk[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "BESLE_USER_HISTORY_VTK=$($oldVtk[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Uninstall BESLE and preserve user results
         shell: pwsh
@@ -282,6 +364,12 @@ jobs:
           }
           if (-not (Test-Path -LiteralPath $env:BESLE_USER_VTK -PathType Leaf)) {
             throw "Uninstalling BESLE removed a user result."
+          }
+          if (-not (Test-Path -LiteralPath $env:BESLE_USER_HISTORY_VTK -PathType Leaf)) {
+            throw "Uninstalling BESLE removed archived user results."
+          }
+          if (-not (Test-Path -LiteralPath $env:BESLE_USER_CONFIG -PathType Leaf)) {
+            throw "Uninstalling BESLE removed the user's BESLE.nml."
           }
 
       - name: Record installer evidence
@@ -322,5 +410,6 @@ jobs:
             packaging/windows/stage/third-party-licenses/
             packaging-tests/installed-results/**/*.vtk
             packaging-tests/installed-BESLE.log
+            packaging-tests/runtime-edit/
           if-no-files-found: warn
           retention-days: 14

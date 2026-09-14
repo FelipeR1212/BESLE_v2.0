@@ -1,0 +1,7 @@
+build/
+cmake-build-*/
+BESLE_ROOT/obj/
+BESLE_ROOT/OOC/
+BESLE_ROOT/Results/
+*.mod
+*.o

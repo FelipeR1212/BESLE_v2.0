@@ -1,0 +1,165 @@
+name: Portability CI
+
+on:
+  push:
+    branches:
+      - feature/windows-portability
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  BESLE_MAX_STEPS: "1"
+  OMP_NUM_THREADS: "1"
+
+jobs:
+  linux-reference:
+    name: Linux reference
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install numerical dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gfortran ninja-build \
+            openmpi-bin libopenmpi-dev \
+            libmumps-dev libscalapack-openmpi-dev \
+            libopenblas-dev liblapack-dev
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_Fortran_COMPILER=mpifort
+
+      - name: Build
+        run: cmake --build build --parallel 2
+
+      - name: Run one-step reference
+        working-directory: BESLE_ROOT
+        run: |
+          rm -rf Results OOC
+          mkdir -p Results OOC
+          mpiexec -n 2 ../build/bin/BESLE
+
+      - name: Record Linux environment
+        run: |
+          gfortran --version > environment-linux.txt
+          cmake --version >> environment-linux.txt
+          mpiexec --version >> environment-linux.txt
+          dpkg-query -W gfortran openmpi-bin libopenmpi-dev libmumps-dev \
+            libscalapack-openmpi-dev libopenblas-dev >> environment-linux.txt
+
+      - name: Upload Linux numerical reference
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-reference-vtk
+          path: BESLE_ROOT/Results/**/*.vtk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Linux environment
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-environment
+          path: environment-linux.txt
+          retention-days: 14
+
+  windows-native:
+    name: Windows native and equivalence
+    needs: linux-reference
+    runs-on: windows-2022
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Microsoft MPI runtime
+        shell: pwsh
+        run: |
+          $url = "https://download.microsoft.com/download/a/5/2/a5207ca5-1203-491a-8fb8-906fd68ae623/msmpisetup.exe"
+          $destination = Join-Path $env:RUNNER_TEMP "msmpisetup.exe"
+          $expected = "C305CE3F05D142D519F8DD800D83A4B894FC31BCAD30512CEFB557FEACCBE8B4"
+          Invoke-WebRequest -Uri $url -OutFile $destination
+          $actual = (Get-FileHash -Path $destination -Algorithm SHA256).Hash
+          if ($actual -ne $expected) {
+            throw "Unexpected Microsoft MPI installer hash: $actual"
+          }
+          $process = Start-Process -FilePath $destination -ArgumentList "-unattend" -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "Microsoft MPI installation failed with exit code $($process.ExitCode)"
+          }
+
+      - name: Install UCRT64 build toolchain
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            python
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-gcc-fortran
+            mingw-w64-ucrt-x86_64-msmpi
+            mingw-w64-ucrt-x86_64-mumps
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+
+      - name: Configure
+        shell: msys2 {0}
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_Fortran_COMPILER=/ucrt64/bin/mpifort.exe \
+            -DCMAKE_PREFIX_PATH=/ucrt64
+
+      - name: Build
+        shell: msys2 {0}
+        run: cmake --build build --parallel 2
+
+      - name: Run one-step Windows case
+        shell: msys2 {0}
+        working-directory: BESLE_ROOT
+        run: |
+          rm -rf Results OOC
+          mkdir -p Results OOC
+          "/c/Program Files/Microsoft MPI/Bin/mpiexec.exe" -n 2 ../build/bin/BESLE.exe
+
+      - name: Download Linux reference
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-reference-vtk
+          path: reference-results
+
+      - name: Compare Windows against Linux
+        shell: msys2 {0}
+        run: |
+          python tools/compare_vtk.py \
+            reference-results \
+            BESLE_ROOT/Results \
+            --rtol 1e-7 \
+            --atol 1e-9 \
+            --report portability-windows.json
+
+      - name: Record Windows environment
+        shell: msys2 {0}
+        run: |
+          gfortran --version > environment-windows.txt
+          cmake --version >> environment-windows.txt
+          pacman -Q >> environment-windows.txt
+
+      - name: Upload Windows evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-portability-evidence
+          path: |
+            BESLE_ROOT/Results/**/*.vtk
+            portability-windows.json
+            environment-windows.txt
+          if-no-files-found: error
+          retention-days: 14

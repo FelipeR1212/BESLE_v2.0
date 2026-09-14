@@ -50,6 +50,13 @@ PROGRAM Main
     REAL(8) :: ts12a, ts12b, ts13, ts14, tts
     REAL(8) :: t=0
     INTEGER :: r=1, Steps=1, step, root=0
+    INTEGER :: max_steps, env_status
+    CHARACTER(LEN=32) :: max_steps_text
+
+    ts0 = 0.d0; ts1 = 0.d0; ts2 = 0.d0; ts3 = 0.d0; ts4 = 0.d0
+    ts5 = 0.d0; ts6 = 0.d0; ts7 = 0.d0; ts8 = 0.d0; ts9 = 0.d0
+    ts10 = 0.d0; ts11 = 0.d0; ts12a = 0.d0; ts12b = 0.d0
+    ts13 = 0.d0; ts14 = 0.d0; tts = 0.d0
 
     CALL MPI_INIT(mpierr) 
     !---------------------------------------------------------------------------------
@@ -101,6 +108,14 @@ PROGRAM Main
 
         IF (Quasi_static.EQ.1)THEN
             Steps = Static_steps
+        END IF
+
+        ! Optional validation override. Normal scientific runs are unchanged when
+        ! BESLE_MAX_STEPS is not defined.
+        CALL GET_ENVIRONMENT_VARIABLE('BESLE_MAX_STEPS',max_steps_text,STATUS=env_status)
+        IF (env_status.EQ.0) THEN
+            READ(max_steps_text,*,IOSTAT=env_status) max_steps
+            IF ((env_status.EQ.0).AND.(max_steps.GT.0)) Steps = MIN(Steps,max_steps)
         END IF
 
         !4. Matrices of Boundary Conditions and Non_interfaces

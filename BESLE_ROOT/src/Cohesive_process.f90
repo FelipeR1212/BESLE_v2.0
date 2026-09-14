@@ -72,7 +72,7 @@ SUBROUTINE Iterative_process(me,nt,step,time)
     t2 = MPI_Wtime() 
     duration = t2-t1
     CALL MPI_REDUCE(duration,time,1,MPI_DOUBLE,MPI_MAX,0,MPI_COMM_WORLD,mpierr);
-    CALL MPI_Bcast(time,1,MPI_INTEGER,root,MPI_COMM_WORLD,mpierr)
+    CALL MPI_Bcast(time,1,MPI_DOUBLE,root,MPI_COMM_WORLD,mpierr)
     !---------------------------------------------------------------------------------
 	
 

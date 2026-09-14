@@ -135,3 +135,10 @@ at the University of Campinas funded by the Sao Paulo Research Foundation FAPESP
 ======================================================================================
 
 ======================================================================================
+
+## Experimental portable build
+
+Native Linux and Windows portability is being developed on
+`feature/windows-portability`. The legacy Ubuntu Makefile remains available and
+unchanged. See [Windows development notes](docs/WINDOWS.md) and the
+[validation plan](docs/PORTABILITY_VALIDATION.md).

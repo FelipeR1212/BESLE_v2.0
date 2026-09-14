@@ -742,7 +742,8 @@ END SUBROUTINE Matmul_parallel2
 SUBROUTINE Distr_mat2(sub_nt,sub_me,NEWCOMM,scounts,displs,NFA,NCA, &
                                                                     mat_A,sub_mat_A)
     include 'mpif.h'
-    INTEGER :: sub_nt, root = 0, mpierr, sub_me, i, NEWCOMM, status
+    INTEGER :: sub_nt, root = 0, mpierr, sub_me, i, NEWCOMM
+    INTEGER :: status(MPI_STATUS_SIZE)
     INTEGER :: NCA, NFA
     INTEGER :: sub_nt2, World_group2, New_group2, NEWCOMM2, sub_me2
     INTEGER :: ndims, oldsize(2), newsize(2), starts(2), newtype

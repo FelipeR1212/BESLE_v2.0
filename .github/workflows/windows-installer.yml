@@ -157,7 +157,7 @@ jobs:
           if ($null -eq $resultDirectory) {
             throw "The staged launcher did not create a simulation directory."
           }
-          foreach ($requiredFile in @("BESLE.nml", "run-this-simulation.cmd", "edit-BESLE-parameters.cmd")) {
+          foreach ($requiredFile in @("BESLE.nml", "run-this-simulation.cmd")) {
             if (-not (Test-Path -LiteralPath (Join-Path $resultDirectory.FullName $requiredFile) -PathType Leaf)) {
               throw "The staged project is missing $requiredFile."
             }
@@ -167,7 +167,7 @@ jobs:
               throw "The staged project is missing $requiredDirectory."
             }
           }
-          foreach ($unexpectedFile in @("BESLE.log", "BESLE-used.nml")) {
+          foreach ($unexpectedFile in @("BESLE.log", "BESLE-used.nml", "edit-BESLE-parameters.cmd")) {
             if (Test-Path -LiteralPath (Join-Path $resultDirectory.FullName $unexpectedFile)) {
               throw "Create-only mode unexpectedly generated $unexpectedFile."
             }
@@ -268,16 +268,15 @@ jobs:
           if ($null -eq $project) {
             throw "Create-only mode did not create an installed simulation project."
           }
-          foreach ($requiredFile in @("BESLE.nml", "run-this-simulation.cmd", "edit-BESLE-parameters.cmd")) {
+          foreach ($requiredFile in @("BESLE.nml", "run-this-simulation.cmd")) {
             if (-not (Test-Path -LiteralPath (Join-Path $project.FullName $requiredFile) -PathType Leaf)) {
               throw "The installed create-only project is missing $requiredFile."
             }
           }
-          if (Test-Path -LiteralPath (Join-Path $project.FullName "BESLE.log")) {
-            throw "Create-only mode unexpectedly launched BESLE and generated a log."
-          }
-          if (Test-Path -LiteralPath (Join-Path $project.FullName "BESLE-used.nml")) {
-            throw "Create-only mode unexpectedly recorded an executed configuration."
+          foreach ($unexpectedFile in @("BESLE.log", "BESLE-used.nml", "edit-BESLE-parameters.cmd")) {
+            if (Test-Path -LiteralPath (Join-Path $project.FullName $unexpectedFile)) {
+              throw "Create-only mode unexpectedly generated $unexpectedFile."
+            }
           }
           $unexpectedVtk = @(Get-ChildItem -LiteralPath $project.FullName -Filter "Results_*.vtk" -File -Recurse)
           if ($unexpectedVtk.Count -ne 0) {

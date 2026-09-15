@@ -11,8 +11,8 @@ de nuevo la simulación sin recompilar Fortran.
 2. Elija `2. Omitir la prueba y crear la carpeta de simulación`.
 3. Entre a la carpeta del proyecto indicada por el lanzador. En este punto no
    se ha ejecutado ningún cálculo ni se han generado archivos VTK.
-4. Abra `BESLE.nml`, preferiblemente mediante
-   `edit-BESLE-parameters.cmd`.
+4. Abra directamente `BESLE.nml` con el Bloc de notas o con otro editor de
+   texto plano.
 5. Cambie únicamente los valores necesarios y guarde el archivo.
 6. Ejecute `run-this-simulation.cmd` dentro de la misma carpeta.
 

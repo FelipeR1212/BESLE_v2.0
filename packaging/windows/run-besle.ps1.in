@@ -42,7 +42,7 @@ function Get-UniqueDirectory {
     return $candidate
 }
 
-function Write-ProjectHelpers {
+function Write-ProjectHelper {
     param(
         [Parameter(Mandatory = $true)]
         [string]$RunDirectory
@@ -59,15 +59,8 @@ if not "%BESLE_EXIT%"=="0" echo La simulacion termino con errores. Revise BESLE.
 pause
 exit /b %BESLE_EXIT%
 "@
-    $editHelper = @"
-@echo off
-start "" notepad.exe "%~dp0BESLE.nml"
-"@
-
     Set-Content -LiteralPath (Join-Path $RunDirectory "run-this-simulation.cmd") `
         -Value $runHelper -Encoding ascii
-    Set-Content -LiteralPath (Join-Path $RunDirectory "edit-BESLE-parameters.cmd") `
-        -Value $editHelper -Encoding ascii
 }
 
 function New-BesleProject {
@@ -97,7 +90,7 @@ function New-BesleProject {
     }
 
     Copy-Item -LiteralPath $templateConfig -Destination (Join-Path $runDirectory "BESLE.nml")
-    Write-ProjectHelpers -RunDirectory $runDirectory
+    Write-ProjectHelper -RunDirectory $runDirectory
     return $runDirectory
 }
 
@@ -180,7 +173,7 @@ try {
         if (-not (Test-Path -LiteralPath $runDirectory -PathType Container)) {
             throw "No existe el proyecto $runDirectory."
         }
-        Write-ProjectHelpers -RunDirectory $runDirectory
+        Write-ProjectHelper -RunDirectory $runDirectory
     }
 
     $configPath = Join-Path $runDirectory "BESLE.nml"

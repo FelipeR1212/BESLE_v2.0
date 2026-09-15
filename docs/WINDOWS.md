@@ -63,9 +63,10 @@ silently.
 The launcher deliberately offers only two choices: an optional one-step test to
 verify the installation, or creating a simulation folder without running any
 calculation. In both cases BESLE creates a separate project under
-`Documents\BESLE\2.1.0\runs`, including its editable `BESLE.nml` and two helper
-scripts. The create-only choice does not start MPI and does not generate a log,
-used-configuration copy, or VTK result. Editing the file and launching
+`Documents\BESLE\2.1.0\runs`, including its editable `BESLE.nml` and the
+`run-this-simulation.cmd` execution helper. The create-only choice does not
+start MPI and does not generate a log, used-configuration copy, or VTK result.
+Editing `BESLE.nml` directly and launching
 `run-this-simulation.cmd` runs that project without recompilation. Previous
 results are archived under `history`, and uninstalling BESLE does not remove
 these user projects.

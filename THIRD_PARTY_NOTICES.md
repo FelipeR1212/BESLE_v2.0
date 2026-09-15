@@ -25,7 +25,10 @@ The principal components include:
   institutional use and redistribution without compensation under the
   conditions stated in its notice; commercial-system distribution requires a
   direct arrangement with its author. The complete upstream `README` notice is
-  installed under `third-party-licenses/Triangle`.
+  installed under `third-party-licenses/Triangle`. For native 64-bit Windows,
+  the public CMake build makes mechanical prototype and pointer-width
+  substitutions (`uintptr_t`) required by the LLP64 data model; it does not
+  alter Triangle's meshing algorithm.
 
 The Microsoft MPI installer is downloaded from Microsoft and its SHA-256 digest
 is verified before packaging. When the installed Microsoft MPI distribution

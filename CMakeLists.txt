@@ -174,9 +174,45 @@ if(BESLE_BUILD_AUXILIARIES)
         POSITION_INDEPENDENT_CODE YES
     )
 
-    add_library(besle_triangle STATIC "${triangle_SOURCE_DIR}/triangle.c")
-    target_include_directories(besle_triangle PUBLIC "${triangle_SOURCE_DIR}")
-    target_compile_definitions(besle_triangle PRIVATE TRILIBRARY)
+    set(BESLE_TRIANGLE_SOURCE "${triangle_SOURCE_DIR}/triangle.c")
+    set(BESLE_TRIANGLE_INCLUDE_DIR "${triangle_SOURCE_DIR}")
+    if(WIN32)
+        # Triangle 1.6 assumes that unsigned long can hold a pointer. That is
+        # true on 64-bit Linux but false on 64-bit Windows (LLP64). Create a
+        # build-only compatibility copy that uses the standard pointer-width
+        # integer type without changing the meshing algorithm.
+        set(BESLE_TRIANGLE_COMPAT_DIR
+            "${CMAKE_CURRENT_BINARY_DIR}/triangle-win64")
+        file(MAKE_DIRECTORY "${BESLE_TRIANGLE_COMPAT_DIR}")
+        file(READ "${triangle_SOURCE_DIR}/triangle.c" triangle_compat_source)
+        string(REPLACE "#include <stdio.h>"
+            "#include <stdint.h>\n#include <stdio.h>"
+            triangle_compat_source "${triangle_compat_source}")
+        string(REPLACE "(unsigned long)" "(uintptr_t)"
+            triangle_compat_source "${triangle_compat_source}")
+        string(REPLACE "unsigned long alignptr;" "uintptr_t alignptr;"
+            triangle_compat_source "${triangle_compat_source}")
+        string(REPLACE "x%lx" "x%zx"
+            triangle_compat_source "${triangle_compat_source}")
+        file(WRITE "${BESLE_TRIANGLE_COMPAT_DIR}/triangle.c"
+            "${triangle_compat_source}")
+        configure_file(
+            "${triangle_SOURCE_DIR}/triangle.h"
+            "${BESLE_TRIANGLE_COMPAT_DIR}/triangle.h"
+            COPYONLY
+        )
+        set(BESLE_TRIANGLE_SOURCE
+            "${BESLE_TRIANGLE_COMPAT_DIR}/triangle.c")
+        set(BESLE_TRIANGLE_INCLUDE_DIR "${BESLE_TRIANGLE_COMPAT_DIR}")
+    endif()
+
+    add_library(besle_triangle STATIC "${BESLE_TRIANGLE_SOURCE}")
+    target_include_directories(besle_triangle PUBLIC
+        "${BESLE_TRIANGLE_INCLUDE_DIR}")
+    target_compile_definitions(besle_triangle
+        PUBLIC ANSI_DECLARATORS VOID=int
+        PRIVATE TRILIBRARY
+    )
     if(WIN32)
         target_compile_definitions(besle_triangle PRIVATE NO_TIMER)
     endif()
@@ -209,6 +245,7 @@ if(BESLE_BUILD_AUXILIARIES)
     )
     target_include_directories(BESLE-Polycrystal-Mesh PRIVATE
         BESLE_ROOT/Mesh/Polycrystal/src
+        "${BESLE_TRIANGLE_INCLUDE_DIR}"
     )
     target_link_libraries(BESLE-Polycrystal-Mesh PRIVATE besle_triangle)
     if(NOT WIN32)

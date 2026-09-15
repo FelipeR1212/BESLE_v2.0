@@ -155,37 +155,45 @@ jobs:
             baseline/BESLE_ROOT/Mesh/Polycrystal/src/Output_data.c \
             "$triangle_library" -lm -o validation/baseline-bin/BESLE-Polycrystal-Mesh
 
+          mkdir -p validation/auxiliary-baseline
+          cp -a baseline/BESLE_ROOT/Material \
+            validation/auxiliary-baseline/material
+          cp -a baseline/BESLE_ROOT/Mesh/General \
+            validation/auxiliary-baseline/general
+          cp -a baseline/BESLE_ROOT/Mesh/Polycrystal \
+            validation/auxiliary-baseline/polycrystal
+
           (
-            cd baseline/BESLE_ROOT/Material
+            cd validation/auxiliary-baseline/material
             "$GITHUB_WORKSPACE/validation/baseline-bin/BESLE-Material"
           )
-          mkdir -p baseline/BESLE_ROOT/Mesh/General/Meshes/DAT \
-            baseline/BESLE_ROOT/Mesh/General/BCs/BCs_DAT
+          mkdir -p validation/auxiliary-baseline/general/Meshes/DAT \
+            validation/auxiliary-baseline/general/BCs/BCs_DAT
           (
-            cd baseline/BESLE_ROOT/Mesh/General
+            cd validation/auxiliary-baseline/general
             "$GITHUB_WORKSPACE/validation/baseline-bin/BESLE-General"
           )
-          mkdir -p baseline/BESLE_ROOT/Mesh/Polycrystal/IO_files \
-            baseline/BESLE_ROOT/Mesh/Polycrystal/Export
+          mkdir -p validation/auxiliary-baseline/polycrystal/IO_files \
+            validation/auxiliary-baseline/polycrystal/Export
           (
-            cd baseline/BESLE_ROOT/Mesh/Polycrystal
+            cd validation/auxiliary-baseline/polycrystal
             "$GITHUB_WORKSPACE/validation/baseline-bin/BESLE-Polycrystal-Structure"
             "$GITHUB_WORKSPACE/validation/baseline-bin/BESLE-Polycrystal-Mesh"
           )
 
       - name: Verify auxiliary defaults against published code
         run: |
-          cmp baseline/BESLE_ROOT/Material/Data/Isotropic/Material_9.dat \
+          cmp validation/auxiliary-baseline/material/Data/Isotropic/Material_9.dat \
             validation/auxiliary-default/material/Material_9.dat
-          cmp baseline/BESLE_ROOT/Mesh/General/Meshes/DAT/Input_data.dat \
+          cmp validation/auxiliary-baseline/general/Meshes/DAT/Input_data.dat \
             validation/auxiliary-default/general/Input_data.dat
-          cmp baseline/BESLE_ROOT/Mesh/General/BCs/BCs_DAT/BCs_1.dat \
+          cmp validation/auxiliary-baseline/general/BCs/BCs_DAT/BCs_1.dat \
             validation/auxiliary-default/general/BCs_1.dat
-          cmp baseline/BESLE_ROOT/Mesh/General/BCs/BCs_DAT/BCs_2.dat \
+          cmp validation/auxiliary-baseline/general/BCs/BCs_DAT/BCs_2.dat \
             validation/auxiliary-default/general/BCs_2.dat
-          cmp baseline/BESLE_ROOT/Mesh/Polycrystal/Export/Mesh.dat \
+          cmp validation/auxiliary-baseline/polycrystal/Export/Mesh.dat \
             validation/auxiliary-default/polycrystal/Mesh.dat
-          cmp baseline/BESLE_ROOT/Mesh/Polycrystal/Export/Mesh.vtk \
+          cmp validation/auxiliary-baseline/polycrystal/Export/Mesh.vtk \
             validation/auxiliary-default/polycrystal/Mesh.vtk
 
       - name: Change every auxiliary configuration without rebuilding

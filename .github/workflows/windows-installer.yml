@@ -119,11 +119,11 @@ jobs:
             packaging/windows/stage/redist/msmpisetup.exe \
             > packaging/windows/stage/BUNDLED-FILES.sha256
 
-      - name: Verify staged launcher without build tools on PATH
+      - name: Verify staged folder creation without running BESLE
         shell: pwsh
         run: |
           $stage = Join-Path $env:GITHUB_WORKSPACE "packaging\windows\stage"
-          $outputRoot = Join-Path $env:RUNNER_TEMP "besle-staged-run"
+          $outputRoot = Join-Path $env:RUNNER_TEMP "besle-staged-create-only"
           $systemPowerShell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
           $env:PATH = @(
             (Join-Path $env:SystemRoot "System32"),
@@ -134,26 +134,48 @@ jobs:
           $launcherArguments = @(
             "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass",
             "-File", (Join-Path $stage "run-besle.ps1"),
-            "-Mode", "Quick", "-OutputRoot", $outputRoot, "-NoPause"
+            "-Mode", "Create", "-OutputRoot", $outputRoot, "-NoPause"
           )
 
-          & $systemPowerShell @launcherArguments
-          if ($LASTEXITCODE -ne 0) {
-            throw "The staged launcher failed with exit code $LASTEXITCODE"
+          $stagedExecutable = Join-Path $stage "BESLE.exe"
+          $heldExecutable = Join-Path $stage "BESLE.exe.not-running"
+          Move-Item -LiteralPath $stagedExecutable -Destination $heldExecutable
+          try {
+            & $systemPowerShell @launcherArguments
+            $launcherExitCode = $LASTEXITCODE
+          }
+          finally {
+            Move-Item -LiteralPath $heldExecutable -Destination $stagedExecutable
+          }
+          if ($launcherExitCode -ne 0) {
+            throw "The staged create-only launcher failed with exit code $launcherExitCode"
           }
 
           $resultDirectory = Get-ChildItem -LiteralPath $outputRoot -Directory |
             Sort-Object LastWriteTime -Descending |
             Select-Object -First 1
           if ($null -eq $resultDirectory) {
-            throw "The staged launcher did not create a run directory."
+            throw "The staged launcher did not create a simulation directory."
           }
-          foreach ($requiredFile in @("BESLE.nml", "BESLE-used.nml", "run-this-simulation.cmd", "edit-BESLE-parameters.cmd")) {
+          foreach ($requiredFile in @("BESLE.nml", "run-this-simulation.cmd", "edit-BESLE-parameters.cmd")) {
             if (-not (Test-Path -LiteralPath (Join-Path $resultDirectory.FullName $requiredFile) -PathType Leaf)) {
               throw "The staged project is missing $requiredFile."
             }
           }
-          Copy-Item -LiteralPath (Join-Path $resultDirectory.FullName "Results") -Destination (Join-Path $env:GITHUB_WORKSPACE "packaging-tests\staged-results") -Recurse
+          foreach ($requiredDirectory in @("Body_forces", "Cracks", "Material", "Mesh")) {
+            if (-not (Test-Path -LiteralPath (Join-Path $resultDirectory.FullName $requiredDirectory) -PathType Container)) {
+              throw "The staged project is missing $requiredDirectory."
+            }
+          }
+          foreach ($unexpectedFile in @("BESLE.log", "BESLE-used.nml")) {
+            if (Test-Path -LiteralPath (Join-Path $resultDirectory.FullName $unexpectedFile)) {
+              throw "Create-only mode unexpectedly generated $unexpectedFile."
+            }
+          }
+          $unexpectedVtk = @(Get-ChildItem -LiteralPath $resultDirectory.FullName -Filter "Results_*.vtk" -File -Recurse)
+          if ($unexpectedVtk.Count -ne 0) {
+            throw "Create-only mode unexpectedly generated VTK results."
+          }
 
       - name: Ensure Inno Setup compiler
         shell: pwsh
@@ -223,6 +245,49 @@ jobs:
           "BESLE_TEST_INSTALL_DIR=$installDirectory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           $executableHash = (Get-FileHash -LiteralPath (Join-Path $installDirectory "BESLE.exe") -Algorithm SHA256).Hash
           "BESLE_INSTALLED_EXE_HASH=$executableHash" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Create installed project without running the default case
+        shell: pwsh
+        run: |
+          $outputRoot = Join-Path $env:RUNNER_TEMP "besle-installed-create-only"
+          $systemPowerShell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+          $launcherArguments = @(
+            "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass",
+            "-File", (Join-Path $env:BESLE_TEST_INSTALL_DIR "run-besle.ps1"),
+            "-Mode", "Create", "-OutputRoot", $outputRoot, "-NoPause"
+          )
+
+          & $systemPowerShell @launcherArguments
+          if ($LASTEXITCODE -ne 0) {
+            throw "The installed create-only launcher failed with exit code $LASTEXITCODE"
+          }
+
+          $project = Get-ChildItem -LiteralPath $outputRoot -Directory |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if ($null -eq $project) {
+            throw "Create-only mode did not create an installed simulation project."
+          }
+          foreach ($requiredFile in @("BESLE.nml", "run-this-simulation.cmd", "edit-BESLE-parameters.cmd")) {
+            if (-not (Test-Path -LiteralPath (Join-Path $project.FullName $requiredFile) -PathType Leaf)) {
+              throw "The installed create-only project is missing $requiredFile."
+            }
+          }
+          if (Test-Path -LiteralPath (Join-Path $project.FullName "BESLE.log")) {
+            throw "Create-only mode unexpectedly launched BESLE and generated a log."
+          }
+          if (Test-Path -LiteralPath (Join-Path $project.FullName "BESLE-used.nml")) {
+            throw "Create-only mode unexpectedly recorded an executed configuration."
+          }
+          $unexpectedVtk = @(Get-ChildItem -LiteralPath $project.FullName -Filter "Results_*.vtk" -File -Recurse)
+          if ($unexpectedVtk.Count -ne 0) {
+            throw "Create-only mode unexpectedly generated VTK results."
+          }
+
+          $currentHash = (Get-FileHash -LiteralPath (Join-Path $env:BESLE_TEST_INSTALL_DIR "BESLE.exe") -Algorithm SHA256).Hash
+          if ($currentHash -ne $env:BESLE_INSTALLED_EXE_HASH) {
+            throw "BESLE.exe changed while creating an unexecuted project."
+          }
 
       - name: Run installed application without build tools on PATH
         shell: pwsh

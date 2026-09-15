@@ -7,12 +7,19 @@ de nuevo la simulación sin recompilar Fortran.
 
 ## Uso en Windows
 
-1. Abra BESLE desde el acceso directo y cree una simulación nueva.
-2. Entre a la carpeta del proyecto indicada al terminar la ejecución.
-3. Abra `BESLE.nml`, preferiblemente mediante
+1. Abra BESLE desde el acceso directo.
+2. Elija `2. Omitir la prueba y crear la carpeta de simulación`.
+3. Entre a la carpeta del proyecto indicada por el lanzador. En este punto no
+   se ha ejecutado ningún cálculo ni se han generado archivos VTK.
+4. Abra `BESLE.nml`, preferiblemente mediante
    `edit-BESLE-parameters.cmd`.
-4. Cambie únicamente los valores necesarios y guarde el archivo.
-5. Ejecute `run-this-simulation.cmd` dentro de la misma carpeta.
+5. Cambie únicamente los valores necesarios y guarde el archivo.
+6. Ejecute `run-this-simulation.cmd` dentro de la misma carpeta.
+
+La opción 1 del lanzador es únicamente una prueba opcional de un paso para la
+primera instalación o para verificar posteriormente que BESLE y Microsoft MPI
+funcionan. El lanzador nunca inicia automáticamente el caso predeterminado de
+200 pasos.
 
 En cada repetición, los resultados y el registro anteriores se trasladan a una
 subcarpeta fechada dentro de `history`. La configuración realmente utilizada se

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("Quick", "Full", "Configured")]
+    [ValidateSet("Quick", "Create", "Configured")]
     [string]$Mode,
     [string]$OutputRoot,
     [string]$ProjectPath,
@@ -101,22 +101,6 @@ function New-BesleProject {
     return $runDirectory
 }
 
-function Get-LatestProject {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$RunsRoot
-    )
-
-    if (-not (Test-Path -LiteralPath $RunsRoot -PathType Container)) {
-        return $null
-    }
-
-    return Get-ChildItem -LiteralPath $RunsRoot -Directory |
-        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "BESLE.nml") -PathType Leaf } |
-        Sort-Object LastWriteTime -Descending |
-        Select-Object -First 1
-}
-
 function Archive-PreviousRun {
     param(
         [Parameter(Mandatory = $true)]
@@ -157,50 +141,35 @@ function Archive-PreviousRun {
 }
 
 try {
-    if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
-        throw "No se encontro BESLE.exe en $appRoot."
-    }
-
-    if (-not (Test-Path -LiteralPath $mpiExecutable -PathType Leaf)) {
-        throw "No se encontro Microsoft MPI. Repare o vuelva a instalar BESLE."
-    }
-
     if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
         $OutputRoot = Get-DefaultOutputRoot
     }
 
     if ([string]::IsNullOrWhiteSpace($Mode)) {
-        Write-Host ""
-        Write-Host "BESLE $version"
-        Write-Host "1. Nueva prueba rapida (un paso)"
-        Write-Host "2. Nueva simulacion con BESLE.nml"
-        Write-Host "3. Editar o repetir el proyecto mas reciente"
-        Write-Host "4. Abrir la carpeta de proyectos"
-        $selection = Read-Host "Seleccione 1, 2, 3 o 4"
+        while ([string]::IsNullOrWhiteSpace($Mode)) {
+            Write-Host ""
+            Write-Host "BESLE $version"
+            Write-Host "1. Probar o verificar la instalacion (un paso)"
+            Write-Host "2. Omitir la prueba y crear la carpeta de simulacion"
+            $selection = Read-Host "Seleccione 1 o 2"
 
-        switch ($selection) {
-            "2" { $Mode = "Full" }
-            "3" {
-                $latestProject = Get-LatestProject -RunsRoot $OutputRoot
-                if ($null -eq $latestProject) {
-                    throw "No hay proyectos anteriores en $OutputRoot."
+            switch ($selection) {
+                "1" { $Mode = "Quick" }
+                "2" { $Mode = "Create" }
+                default {
+                    Write-Host "Seleccion no valida. Escriba 1 o 2." -ForegroundColor Yellow
                 }
-                $Mode = "Configured"
-                $ProjectPath = $latestProject.FullName
-                $latestConfig = Join-Path $ProjectPath "BESLE.nml"
-                Start-Process -FilePath notepad.exe -ArgumentList "`"$latestConfig`"" -Wait
             }
-            "4" {
-                [void](New-Item -ItemType Directory -Path $OutputRoot -Force)
-                Start-Process explorer.exe -ArgumentList $OutputRoot
-                exit 0
-            }
-            default { $Mode = "Quick" }
         }
     }
 
+    if (($Mode -eq "Configured") -and [string]::IsNullOrWhiteSpace($ProjectPath)) {
+        throw "La ejecucion configurada requiere la carpeta de un proyecto existente."
+    }
+
     if ([string]::IsNullOrWhiteSpace($ProjectPath)) {
-        $runDirectory = New-BesleProject -RunsRoot $OutputRoot -RunMode $Mode
+        $projectKind = if ($Mode -eq "Quick") { "verification" } else { "simulation" }
+        $runDirectory = New-BesleProject -RunsRoot $OutputRoot -RunMode $projectKind
     }
     else {
         # Older generated helpers could leave a literal quote at the end of a
@@ -217,6 +186,28 @@ try {
     $configPath = Join-Path $runDirectory "BESLE.nml"
     if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
         throw "El proyecto no contiene BESLE.nml: $runDirectory."
+    }
+
+    if ($Mode -eq "Create") {
+        Write-Host ""
+        Write-Host "Carpeta de simulacion creada correctamente."
+        Write-Host "Proyecto:   $runDirectory"
+        Write-Host "Parametros: $configPath"
+        Write-Host ""
+        Write-Host "No se ejecuto BESLE ni se genero ningun resultado."
+        Write-Host "Edite BESLE.nml y, cuando este listo, ejecute"
+        Write-Host "run-this-simulation.cmd dentro de esta carpeta."
+        Write-Host ""
+        Wait-Besle
+        exit 0
+    }
+
+    if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+        throw "No se encontro BESLE.exe en $appRoot."
+    }
+
+    if (-not (Test-Path -LiteralPath $mpiExecutable -PathType Leaf)) {
+        throw "No se encontro Microsoft MPI. Repare o vuelva a instalar BESLE."
     }
 
     Archive-PreviousRun -RunDirectory $runDirectory

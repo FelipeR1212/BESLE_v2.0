@@ -60,12 +60,15 @@ It installs BESLE under Program Files and creates an optional desktop shortcut.
 If Microsoft MPI is missing, the verified Microsoft redistributable is installed
 silently.
 
-The launcher offers a one-step validation run, a configured run, or reopening
-the most recent project. A new project receives a separate directory under
+The launcher deliberately offers only two choices: an optional one-step test to
+verify the installation, or creating a simulation folder without running any
+calculation. In both cases BESLE creates a separate project under
 `Documents\BESLE\2.1.0\runs`, including its editable `BESLE.nml` and two helper
-scripts. Editing the file and launching `run-this-simulation.cmd` reruns the
-same project without recompilation. Previous results are archived under
-`history`, and uninstalling BESLE does not remove these user projects.
+scripts. The create-only choice does not start MPI and does not generate a log,
+used-configuration copy, or VTK result. Editing the file and launching
+`run-this-simulation.cmd` runs that project without recompilation. Previous
+results are archived under `history`, and uninstalling BESLE does not remove
+these user projects.
 
 Because the installer is intentionally unsigned, Windows SmartScreen may display
 a warning. The release will include a SHA-256 file so users can verify the exact

@@ -81,7 +81,8 @@ MODULE Global_variables
 !-----------------------------------------------------------------------
 !object region 
     type(Reg), allocatable :: Region(:)
-    type(BoundaryCondition) :: BC(1000000)
+    integer(4), parameter :: MAX_BOUNDARY_CONDITIONS = 1000
+    type(BoundaryCondition) :: BC(MAX_BOUNDARY_CONDITIONS)
 !-----------------------------------------------------------------------
     integer(4) stat,i,j,k
     integer(4) :: nvaux, neaux, nraux

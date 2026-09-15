@@ -1,0 +1,40 @@
+! Configuracion editable del generador de malla general y condiciones de borde.
+! Orden de cada vector de cinco valores: x, y, z, normal, carga total.
+! Edite este archivo y ejecute run-general.cmd. No se recompila BESLE.
+&GENERAL_CONFIG
+    filename_in = 'Meshes/Obj/mesh.obj'
+    filename_out = 'Input_data.dat'
+    BCSfilesPlace_in = 'BCs/BCs_Obj/'
+    AnalysisType = 'quasi-elastostatic'
+    Nsteps = 50
+    NumBCS = 2
+    MeshNumPress = 4
+
+    boundary_conditions(1)%direction = 'xyz'
+    boundary_conditions(1)%bc_type = 'displacement', 'displacement', 'displacement', 'free'
+    boundary_conditions(1)%function_type = 'linear', 'linear', 'linear', 'linear', 'linear'
+    boundary_conditions(1)%static_value = 0.0d0, 0.0d0, 0.0d0, 0.0d0, 0.0d0
+    boundary_conditions(1)%linear_max = 0.0d0, 0.0d0, 0.0d0, 0.0d0, 0.0d0
+    boundary_conditions(1)%load_direction = 1.0d0, 0.0d0, 0.0d0
+
+    boundary_conditions(2)%direction = 'xyz'
+    boundary_conditions(2)%bc_type = 'traction', 'free', 'traction', 'free'
+    boundary_conditions(2)%function_type = 'linear', 'linear', 'linear', 'linear', 'linear'
+    boundary_conditions(2)%static_value = 0.0d0, 0.0d0, 0.0d0, 0.0d0, 0.0d0
+    boundary_conditions(2)%linear_max = 1.0d2, 0.0d0, 1.0d2, 0.0d0, 0.0d0
+    boundary_conditions(2)%load_direction = 1.0d0, 0.0d0, 0.0d0
+
+    ! Parametros para function_type='quadratic'.
+    boundary_conditions(1)%quadratic_start = 0.0d0, 0.0d0, 0.0d0, 0.0d0, 0.0d0
+    boundary_conditions(1)%quadratic_end = 1.0d0, 1.0d0, 1.0d0, 1.0d0, 1.0d0
+    boundary_conditions(1)%quadratic_a = 0.0d0, 0.0d0, 0.0d0, 0.0d0, 0.0d0
+    boundary_conditions(1)%quadratic_b = 0.0d0, 0.0d0, 0.0d0, 0.0d0, 0.0d0
+    boundary_conditions(1)%quadratic_c = 0.0d0, 0.0d0, 0.0d0, 0.0d0, 0.0d0
+
+    ! Parametros para function_type='sine'.
+    boundary_conditions(1)%sine_start = 0.0d0, 0.0d0, 0.0d0, 0.0d0, 0.0d0
+    boundary_conditions(1)%sine_end = 1.0d0, 1.0d0, 1.0d0, 1.0d0, 1.0d0
+    boundary_conditions(1)%sine_a = 0.0d0, 0.0d0, 0.0d0, 0.0d0, 0.0d0
+    boundary_conditions(1)%sine_b = 0.0d0, 0.0d0, 0.0d0, 0.0d0, 0.0d0
+    boundary_conditions(1)%sine_c = 0.0d0, 0.0d0, 0.0d0, 0.0d0, 0.0d0
+/

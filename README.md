@@ -145,3 +145,8 @@ Ubuntu Makefile remains available. See the
 [configuration guide](docs/RUNTIME_CONFIGURATION.md),
 [Windows development notes](docs/WINDOWS.md), and the
 [validation plan](docs/PORTABILITY_VALIDATION.md).
+
+The runtime-configuration branch also provides editable `Material.nml`,
+`General.nml`, and `Polycrystal.nml` files with one `.cmd` runner in each
+corresponding project folder. Users can customize these auxiliary generators
+without rebuilding their Fortran, C, or C++ sources.

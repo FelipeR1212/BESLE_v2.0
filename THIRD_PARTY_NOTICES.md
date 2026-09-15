@@ -17,6 +17,15 @@ The principal components include:
   applicable runtime-library exception.
 - Microsoft MPI Runtime, bundled as Microsoft's unmodified standalone
   redistributable installer.
+- Voro++, used by the polycrystalline-structure generator and distributed
+  under its three-clause redistribution terms. Its complete `LICENSE` file is
+  installed under `third-party-licenses/Voro++`.
+- Triangle 1.6 by Jonathan Richard Shewchuk, used as a callable library by the
+  polycrystalline-mesh generator. Triangle permits private, research, and
+  institutional use and redistribution without compensation under the
+  conditions stated in its notice; commercial-system distribution requires a
+  direct arrangement with its author. The complete upstream `README` notice is
+  installed under `third-party-licenses/Triangle`.
 
 The Microsoft MPI installer is downloaded from Microsoft and its SHA-256 digest
 is verified before packaging. When the installed Microsoft MPI distribution

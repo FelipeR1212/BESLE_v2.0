@@ -48,6 +48,46 @@ jobs:
       - name: Build current version once
         run: cmake --build build --parallel 2
 
+      - name: Run default auxiliary configurations
+        run: |
+          mkdir -p validation/auxiliary-current
+          cp -a BESLE_ROOT/Material validation/auxiliary-current/material
+          cp -a BESLE_ROOT/Mesh/General validation/auxiliary-current/general
+          cp -a BESLE_ROOT/Mesh/Polycrystal validation/auxiliary-current/polycrystal
+
+          (
+            cd validation/auxiliary-current/material
+            BESLE_MATERIAL_CONFIG_FILE="$PWD/Material.nml" \
+              "$GITHUB_WORKSPACE/build/bin/BESLE-Material"
+          )
+          mkdir -p validation/auxiliary-current/general/Meshes/DAT \
+            validation/auxiliary-current/general/BCs/BCs_DAT
+          (
+            cd validation/auxiliary-current/general
+            BESLE_GENERAL_CONFIG_FILE="$PWD/General.nml" \
+              "$GITHUB_WORKSPACE/build/bin/BESLE-General"
+          )
+          mkdir -p validation/auxiliary-current/polycrystal/IO_files \
+            validation/auxiliary-current/polycrystal/Export
+          (
+            cd validation/auxiliary-current/polycrystal
+            BESLE_POLYCRYSTAL_CONFIG_FILE="$PWD/Polycrystal.nml" \
+              "$GITHUB_WORKSPACE/build/bin/BESLE-Polycrystal-Structure"
+            "$GITHUB_WORKSPACE/build/bin/BESLE-Polycrystal-Mesh"
+          )
+
+          mkdir -p validation/auxiliary-default/material \
+            validation/auxiliary-default/general \
+            validation/auxiliary-default/polycrystal
+          cp validation/auxiliary-current/material/Data/Isotropic/Material_9.dat \
+            validation/auxiliary-default/material/
+          cp validation/auxiliary-current/general/Meshes/DAT/Input_data.dat \
+            validation/auxiliary-current/general/BCs/BCs_DAT/BCs_*.dat \
+            validation/auxiliary-default/general/
+          cp validation/auxiliary-current/polycrystal/Export/Mesh.dat \
+            validation/auxiliary-current/polycrystal/Export/Mesh.vtk \
+            validation/auxiliary-default/polycrystal/
+
       - name: Run default external configuration
         working-directory: BESLE_ROOT
         run: |
@@ -63,6 +103,182 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_Fortran_COMPILER=mpifort
           cmake --build baseline/build --parallel 2
+
+      - name: Build and run published auxiliary baseline
+        run: |
+          mkdir -p validation/baseline-bin \
+            validation/baseline-modules/material \
+            validation/baseline-modules/general
+          gfortran -O0 -fimplicit-none -fno-range-check -fallow-argument-mismatch \
+            -Jvalidation/baseline-modules/material \
+            baseline/BESLE_ROOT/Material/src/Global_variables.f90 \
+            baseline/BESLE_ROOT/Material/src/Set_parameters.f90 \
+            baseline/BESLE_ROOT/Material/src/Fourier_Coefficient.f90 \
+            baseline/BESLE_ROOT/Material/src/Output_data.f90 \
+            baseline/BESLE_ROOT/Material/src/F_Coeff.f90 \
+            -lblas -llapack -o validation/baseline-bin/BESLE-Material
+          gfortran -O0 -fimplicit-none -fno-range-check -fallow-argument-mismatch \
+            -Jvalidation/baseline-modules/general \
+            baseline/BESLE_ROOT/Mesh/General/src/Global_variables.f90 \
+            baseline/BESLE_ROOT/Mesh/General/src/Set_parameters.f90 \
+            baseline/BESLE_ROOT/Mesh/General/src/Custom_functions.f90 \
+            baseline/BESLE_ROOT/Mesh/General/src/Mesh_BCs.f90 \
+            baseline/BESLE_ROOT/Mesh/General/src/Mesh.f90 \
+            -lblas -llapack -o validation/baseline-bin/BESLE-General
+
+          voro_library=$(find build -name 'libbesle_voro.a' -print -quit)
+          triangle_library=$(find build -name 'libbesle_triangle.a' -print -quit)
+          voro_source=$(find build/_deps -maxdepth 1 -type d -name 'voro-src' -print -quit)
+          triangle_source=$(find build/_deps -maxdepth 1 -type d -name 'triangle-src' -print -quit)
+          test -f "$voro_library"
+          test -f "$triangle_library"
+          test -d "$voro_source"
+          test -d "$triangle_source"
+
+          g++ -Wall -ansi -pedantic -O3 -Wformat \
+            -Ibaseline/BESLE_ROOT/Mesh/Polycrystal/include \
+            -Ibaseline/BESLE_ROOT/Mesh/Polycrystal/src \
+            -I"$voro_source/src" \
+            baseline/BESLE_ROOT/Mesh/Polycrystal/src/Mesh_Generator.cc \
+            baseline/BESLE_ROOT/Mesh/Polycrystal/src/Set_parameters.cc \
+            baseline/BESLE_ROOT/Mesh/Polycrystal/src/Polycrystalline_Material.cc \
+            baseline/BESLE_ROOT/Mesh/Polycrystal/src/Input_data.cc \
+            baseline/BESLE_ROOT/Mesh/Polycrystal/src/Ouput_data.cc \
+            "$voro_library" -o validation/baseline-bin/BESLE-Polycrystal-Structure
+          gcc -std=gnu99 \
+            -Ibaseline/BESLE_ROOT/Mesh/Polycrystal/src \
+            -I"$triangle_source" \
+            baseline/BESLE_ROOT/Mesh/Polycrystal/src/Main2.c \
+            baseline/BESLE_ROOT/Mesh/Polycrystal/src/Input_data_mesh.c \
+            baseline/BESLE_ROOT/Mesh/Polycrystal/src/2D_Data.c \
+            baseline/BESLE_ROOT/Mesh/Polycrystal/src/transf_coordinates.c \
+            baseline/BESLE_ROOT/Mesh/Polycrystal/src/Output_data.c \
+            "$triangle_library" -lm -o validation/baseline-bin/BESLE-Polycrystal-Mesh
+
+          (
+            cd baseline/BESLE_ROOT/Material
+            "$GITHUB_WORKSPACE/validation/baseline-bin/BESLE-Material"
+          )
+          mkdir -p baseline/BESLE_ROOT/Mesh/General/Meshes/DAT \
+            baseline/BESLE_ROOT/Mesh/General/BCs/BCs_DAT
+          (
+            cd baseline/BESLE_ROOT/Mesh/General
+            "$GITHUB_WORKSPACE/validation/baseline-bin/BESLE-General"
+          )
+          mkdir -p baseline/BESLE_ROOT/Mesh/Polycrystal/IO_files \
+            baseline/BESLE_ROOT/Mesh/Polycrystal/Export
+          (
+            cd baseline/BESLE_ROOT/Mesh/Polycrystal
+            "$GITHUB_WORKSPACE/validation/baseline-bin/BESLE-Polycrystal-Structure"
+            "$GITHUB_WORKSPACE/validation/baseline-bin/BESLE-Polycrystal-Mesh"
+          )
+
+      - name: Verify auxiliary defaults against published code
+        run: |
+          cmp baseline/BESLE_ROOT/Material/Data/Isotropic/Material_9.dat \
+            validation/auxiliary-default/material/Material_9.dat
+          cmp baseline/BESLE_ROOT/Mesh/General/Meshes/DAT/Input_data.dat \
+            validation/auxiliary-default/general/Input_data.dat
+          cmp baseline/BESLE_ROOT/Mesh/General/BCs/BCs_DAT/BCs_1.dat \
+            validation/auxiliary-default/general/BCs_1.dat
+          cmp baseline/BESLE_ROOT/Mesh/General/BCs/BCs_DAT/BCs_2.dat \
+            validation/auxiliary-default/general/BCs_2.dat
+          cmp baseline/BESLE_ROOT/Mesh/Polycrystal/Export/Mesh.dat \
+            validation/auxiliary-default/polycrystal/Mesh.dat
+          cmp baseline/BESLE_ROOT/Mesh/Polycrystal/Export/Mesh.vtk \
+            validation/auxiliary-default/polycrystal/Mesh.vtk
+
+      - name: Change every auxiliary configuration without rebuilding
+        run: |
+          sed -i 's/2.0000000000000000d5/1.0000000000000000d5/' \
+            validation/auxiliary-current/material/Material.nml
+          (
+            cd validation/auxiliary-current/material
+            BESLE_MATERIAL_CONFIG_FILE="$PWD/Material.nml" \
+              "$GITHUB_WORKSPACE/build/bin/BESLE-Material"
+          )
+          if cmp -s validation/auxiliary-default/material/Material_9.dat \
+            validation/auxiliary-current/material/Data/Isotropic/Material_9.dat; then
+            echo "Changing Material.nml did not change Material_9.dat." >&2
+            exit 1
+          fi
+
+          sed -i 's/1.0d2/5.0d1/g' validation/auxiliary-current/general/General.nml
+          rm -rf validation/auxiliary-current/general/Meshes/DAT \
+            validation/auxiliary-current/general/BCs/BCs_DAT
+          mkdir -p validation/auxiliary-current/general/Meshes/DAT \
+            validation/auxiliary-current/general/BCs/BCs_DAT
+          (
+            cd validation/auxiliary-current/general
+            BESLE_GENERAL_CONFIG_FILE="$PWD/General.nml" \
+              "$GITHUB_WORKSPACE/build/bin/BESLE-General"
+          )
+          if cmp -s validation/auxiliary-default/general/BCs_2.dat \
+            validation/auxiliary-current/general/BCs/BCs_DAT/BCs_2.dat; then
+            echo "Changing General.nml did not change BCs_2.dat." >&2
+            exit 1
+          fi
+
+          sed -i 's/ngrains_x = 3/ngrains_x = 2/' \
+            validation/auxiliary-current/polycrystal/Polycrystal.nml
+          sed -i 's/ngrains_y = 4/ngrains_y = 1/' \
+            validation/auxiliary-current/polycrystal/Polycrystal.nml
+          sed -i 's/ngrains_z = 8/ngrains_z = 1/' \
+            validation/auxiliary-current/polycrystal/Polycrystal.nml
+          rm -rf validation/auxiliary-current/polycrystal/IO_files \
+            validation/auxiliary-current/polycrystal/Export
+          mkdir -p validation/auxiliary-current/polycrystal/IO_files \
+            validation/auxiliary-current/polycrystal/Export
+          (
+            cd validation/auxiliary-current/polycrystal
+            BESLE_POLYCRYSTAL_CONFIG_FILE="$PWD/Polycrystal.nml" \
+              "$GITHUB_WORKSPACE/build/bin/BESLE-Polycrystal-Structure"
+            "$GITHUB_WORKSPACE/build/bin/BESLE-Polycrystal-Mesh"
+          )
+          if cmp -s validation/auxiliary-default/polycrystal/Mesh.dat \
+            validation/auxiliary-current/polycrystal/Export/Mesh.dat; then
+            echo "Changing Polycrystal.nml did not change Mesh.dat." >&2
+            exit 1
+          fi
+
+      - name: Reject invalid auxiliary configurations
+        run: |
+          cp validation/auxiliary-current/material/Material.nml validation/invalid-material.nml
+          sed -i 's/nu = 0.0000000000000000d0/nu = 6.0d-1/' validation/invalid-material.nml
+          set +e
+          (
+            cd validation/auxiliary-current/material
+            BESLE_MATERIAL_CONFIG_FILE="$GITHUB_WORKSPACE/validation/invalid-material.nml" \
+              "$GITHUB_WORKSPACE/build/bin/BESLE-Material"
+          ) > validation/invalid-material.log 2>&1
+          material_status=$?
+
+          cp validation/auxiliary-current/general/General.nml validation/invalid-general.nml
+          sed -i "s/AnalysisType = 'quasi-elastostatic'/AnalysisType = 'invalid'/" \
+            validation/invalid-general.nml
+          (
+            cd validation/auxiliary-current/general
+            BESLE_GENERAL_CONFIG_FILE="$GITHUB_WORKSPACE/validation/invalid-general.nml" \
+              "$GITHUB_WORKSPACE/build/bin/BESLE-General"
+          ) > validation/invalid-general.log 2>&1
+          general_status=$?
+
+          cp validation/auxiliary-current/polycrystal/Polycrystal.nml validation/invalid-polycrystal.nml
+          sed -i 's/dm = 1/dm = 0/' validation/invalid-polycrystal.nml
+          (
+            cd validation/auxiliary-current/polycrystal
+            BESLE_POLYCRYSTAL_CONFIG_FILE="$GITHUB_WORKSPACE/validation/invalid-polycrystal.nml" \
+              "$GITHUB_WORKSPACE/build/bin/BESLE-Polycrystal-Structure"
+          ) > validation/invalid-polycrystal.log 2>&1
+          polycrystal_status=$?
+          set -e
+
+          test "$material_status" -ne 0
+          test "$general_status" -ne 0
+          test "$polycrystal_status" -ne 0
+          grep -q 'ERROR DE CONFIGURACION MATERIAL' validation/invalid-material.log
+          grep -q 'ERROR DE CONFIGURACION GENERAL' validation/invalid-general.log
+          grep -q 'ERROR DE CONFIGURACION POLYCRYSTAL' validation/invalid-polycrystal.log
 
       - name: Verify default configuration against baseline
         run: |
@@ -155,6 +371,17 @@ jobs:
             validation/modified-project/BESLE.nml
             validation/invalid-config.log
             validation/environment-linux.txt
+            validation/auxiliary-default/
+            validation/auxiliary-current/material/Material.nml
+            validation/auxiliary-current/material/Data/Isotropic/Material_9.dat
+            validation/auxiliary-current/general/General.nml
+            validation/auxiliary-current/general/Meshes/DAT/
+            validation/auxiliary-current/general/BCs/BCs_DAT/
+            validation/auxiliary-current/polycrystal/Polycrystal.nml
+            validation/auxiliary-current/polycrystal/Export/
+            validation/invalid-material.log
+            validation/invalid-general.log
+            validation/invalid-polycrystal.log
           if-no-files-found: warn
           retention-days: 14
 
@@ -189,6 +416,7 @@ jobs:
           msystem: UCRT64
           update: true
           install: >-
+            git
             python
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-gcc-fortran

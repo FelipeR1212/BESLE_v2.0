@@ -71,6 +71,20 @@ Editing `BESLE.nml` directly and launching
 results are archived under `history`, and uninstalling BESLE does not remove
 these user projects.
 
+The same project also contains runtime-editable auxiliary configurations:
+
+- `Material\Material.nml` with `run-material.cmd`;
+- `Mesh\General\General.nml` with `run-general.cmd`;
+- `Mesh\Polycrystal\Polycrystal.nml` with `run-polycrystal.cmd`.
+
+In each pair, the `.nml` file is the editable configuration and the `.cmd`
+file only launches the installed generator. The installer includes the four
+required native auxiliary executables and their Voro++ and Triangle runtime
+components. Auxiliary outputs, logs, used-configuration copies, and archived
+results remain inside the user project and survive uninstall. See the
+[runtime configuration guide](RUNTIME_CONFIGURATION.md) for the parameter
+scope and limitations.
+
 Because the installer is intentionally unsigned, Windows SmartScreen may display
 a warning. The release will include a SHA-256 file so users can verify the exact
 download before running it.

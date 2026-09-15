@@ -42,6 +42,53 @@ function Get-UniqueDirectory {
     return $candidate
 }
 
+function Write-AuxiliaryHelpers {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RunDirectory
+    )
+
+    $auxiliaryLauncher = Join-Path $appRoot "run-besle-auxiliary.ps1"
+    $helpers = @(
+        @{
+            Tool = "Material"
+            Directory = Join-Path $RunDirectory "Material"
+            File = "run-material.cmd"
+            Title = "BESLE - generar material"
+        },
+        @{
+            Tool = "General"
+            Directory = Join-Path $RunDirectory "Mesh\General"
+            File = "run-general.cmd"
+            Title = "BESLE - generar malla general"
+        },
+        @{
+            Tool = "Polycrystal"
+            Directory = Join-Path $RunDirectory "Mesh\Polycrystal"
+            File = "run-polycrystal.cmd"
+            Title = "BESLE - generar malla policristalina"
+        }
+    )
+
+    foreach ($helper in $helpers) {
+        if (-not (Test-Path -LiteralPath $helper.Directory -PathType Container)) {
+            throw "Falta la carpeta auxiliar $($helper.Directory)."
+        }
+        $helperContent = @"
+@echo off
+title $($helper.Title)
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$auxiliaryLauncher" -Tool $($helper.Tool) -WorkDirectory "%~dp0." -NoPause
+set "BESLE_EXIT=%ERRORLEVEL%"
+echo.
+if not "%BESLE_EXIT%"=="0" echo El auxiliar termino con errores. Revise $($helper.Tool).log.
+pause
+exit /b %BESLE_EXIT%
+"@
+        Set-Content -LiteralPath (Join-Path $helper.Directory $helper.File) `
+            -Value $helperContent -Encoding ascii
+    }
+}
+
 function Write-ProjectHelper {
     param(
         [Parameter(Mandatory = $true)]
@@ -61,6 +108,7 @@ exit /b %BESLE_EXIT%
 "@
     Set-Content -LiteralPath (Join-Path $RunDirectory "run-this-simulation.cmd") `
         -Value $runHelper -Encoding ascii
+    Write-AuxiliaryHelpers -RunDirectory $RunDirectory
 }
 
 function New-BesleProject {

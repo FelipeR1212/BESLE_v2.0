@@ -29,6 +29,62 @@ Los proyectos se crean de forma predeterminada en
 `Documentos\BESLE\2.1.0\runs`; nunca se modifican los archivos instalados bajo
 `Program Files`.
 
+## Herramientas auxiliares en Windows
+
+La carpeta de simulación también incluye los generadores auxiliares de
+materiales, malla general y malla policristalina. Cada herramienta usa dos
+archivos con responsabilidades diferentes:
+
+| Carpeta | Archivo editable | Archivo para ejecutar |
+|---|---|---|
+| `Material` | `Material.nml` | `run-material.cmd` |
+| `Mesh\General` | `General.nml` | `run-general.cmd` |
+| `Mesh\Polycrystal` | `Polycrystal.nml` | `run-polycrystal.cmd` |
+
+El archivo `.nml` es la única fuente de parámetros y debe conservarse. El
+archivo `.cmd` no contiene una segunda configuración ni abre un editor: solo
+lee el `.nml` de su misma carpeta y ejecuta el generador instalado. Por tanto,
+el flujo es siempre el mismo:
+
+1. Abra directamente el archivo `.nml` con el Bloc de notas.
+2. Cambie y guarde los valores necesarios.
+3. Ejecute el archivo `.cmd` de la misma fila de la tabla.
+
+No se modifica ni se recompila ningún `.f90`, `.c` o `.cc`. Después de cada
+ejecución se guarda una copia de la configuración efectiva como
+`Material-used.nml`, `General-used.nml` o `Polycrystal-used.nml`, junto con el
+registro correspondiente. Si ya había resultados, se conservan bajo
+`history` antes de producir los nuevos.
+
+### Material
+
+`Material.nml` permite seleccionar las rutas de salida, el tipo y la red del
+material, la cantidad de materiales, `E`, `nu`, los 21 coeficientes
+independientes de la matriz elástica y los ángulos de rotación. La
+configuración incluida reproduce el archivo histórico
+`Data\Isotropic\Material_9.dat`.
+
+### General
+
+`General.nml` controla los archivos de entrada y salida, el tipo de análisis,
+el número de pasos, la precisión y hasta 1000 condiciones de frontera. Para
+cada condición se pueden definir dirección, tipo, función y parámetros
+estáticos, lineales, cuadráticos o sinusoidales. Las expresiones internas de
+las funciones personalizadas `custom_1`, `custom_2` y `custom_3` siguen siendo
+código Fortran; cambiar sus fórmulas, a diferencia de seleccionar y
+parametrizar las funciones disponibles, sí requiere recompilar.
+
+### Polycrystal
+
+`Polycrystal.nml` permite cambiar la cantidad de granos en `x`, `y` y `z`, las
+dimensiones máximas, el modo regular o aleatorio de los centros y la densidad
+de triangulación `dm`. `run-polycrystal.cmd` ejecuta en orden la generación de
+la estructura y de la malla, y deja `Export\Mesh.dat` y `Export\Mesh.vtk`.
+
+Los valores predeterminados de los tres archivos `.nml` reproducen exactamente
+las salidas de los códigos auxiliares publicados. Una configuración inválida
+se detiene antes de generar una salida nueva.
+
 ## Uso en Linux
 
 Después de compilar BESLE por el procedimiento habitual, edite

@@ -48,6 +48,7 @@ jobs:
           msystem: UCRT64
           update: true
           install: >-
+            git
             python
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-gcc-fortran
@@ -88,8 +89,19 @@ jobs:
       - name: Bundle native runtime DLLs and licenses
         shell: msys2 {0}
         run: |
-          executable=packaging/windows/stage/BESLE.exe
-          ldd "$executable" | tee runtime-dependencies.txt
+          : > runtime-dependencies.txt
+          mapfile -t executables < <(
+            find packaging/windows/stage -maxdepth 1 -type f -iname '*.exe' | sort
+          )
+          if [[ ${#executables[@]} -lt 5 ]]; then
+            echo "The staged package is missing one or more BESLE executables." >&2
+            exit 1
+          fi
+          for executable in "${executables[@]}"; do
+            printf '\n[%s]\n' "$executable" >> runtime-dependencies.txt
+            ldd "$executable" >> runtime-dependencies.txt
+          done
+          cat runtime-dependencies.txt
 
           if grep -qi "not found" runtime-dependencies.txt; then
             echo "A runtime dependency could not be resolved." >&2
@@ -114,7 +126,7 @@ jobs:
           bash tools/stage_msys2_licenses.sh packaging/windows/stage
 
           sha256sum \
-            packaging/windows/stage/BESLE.exe \
+            packaging/windows/stage/*.exe \
             packaging/windows/stage/*.dll \
             packaging/windows/stage/redist/msmpisetup.exe \
             > packaging/windows/stage/BUNDLED-FILES.sha256
@@ -165,6 +177,19 @@ jobs:
           foreach ($requiredDirectory in @("Body_forces", "Cracks", "Material", "Mesh")) {
             if (-not (Test-Path -LiteralPath (Join-Path $resultDirectory.FullName $requiredDirectory) -PathType Container)) {
               throw "The staged project is missing $requiredDirectory."
+            }
+          }
+          $auxiliaryFiles = @(
+            "Material\Material.nml",
+            "Material\run-material.cmd",
+            "Mesh\General\General.nml",
+            "Mesh\General\run-general.cmd",
+            "Mesh\Polycrystal\Polycrystal.nml",
+            "Mesh\Polycrystal\run-polycrystal.cmd"
+          )
+          foreach ($relativeFile in $auxiliaryFiles) {
+            if (-not (Test-Path -LiteralPath (Join-Path $resultDirectory.FullName $relativeFile) -PathType Leaf)) {
+              throw "The staged project is missing $relativeFile."
             }
           }
           foreach ($unexpectedFile in @("BESLE.log", "BESLE-used.nml", "edit-BESLE-parameters.cmd")) {
@@ -241,6 +266,21 @@ jobs:
           if (-not (Test-Path -LiteralPath (Join-Path $installDirectory "BESLE.nml") -PathType Leaf)) {
             throw "The editable BESLE.nml template was not installed."
           }
+          $installedAuxiliaryFiles = @(
+            "BESLE-Material.exe",
+            "BESLE-General.exe",
+            "BESLE-Polycrystal-Structure.exe",
+            "BESLE-Polycrystal-Mesh.exe",
+            "run-besle-auxiliary.ps1",
+            "Material\Material.nml",
+            "Mesh\General\General.nml",
+            "Mesh\Polycrystal\Polycrystal.nml"
+          )
+          foreach ($relativeFile in $installedAuxiliaryFiles) {
+            if (-not (Test-Path -LiteralPath (Join-Path $installDirectory $relativeFile) -PathType Leaf)) {
+              throw "The installed package is missing $relativeFile."
+            }
+          }
 
           "BESLE_TEST_INSTALL_DIR=$installDirectory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           $executableHash = (Get-FileHash -LiteralPath (Join-Path $installDirectory "BESLE.exe") -Algorithm SHA256).Hash
@@ -287,6 +327,148 @@ jobs:
           if ($currentHash -ne $env:BESLE_INSTALLED_EXE_HASH) {
             throw "BESLE.exe changed while creating an unexecuted project."
           }
+
+          "BESLE_CREATE_ONLY_PROJECT=$($project.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Run and reconfigure all installed auxiliary tools
+        shell: pwsh
+        run: |
+          $project = $env:BESLE_CREATE_ONLY_PROJECT
+          $commandInterpreter = Join-Path $env:SystemRoot "System32\cmd.exe"
+          $env:PATH = @(
+            (Join-Path $env:SystemRoot "System32"),
+            $env:SystemRoot,
+            (Join-Path $env:SystemRoot "System32\Wbem"),
+            (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0")
+          ) -join ";"
+          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+          function Invoke-GeneratedHelper {
+            param([string]$Directory, [string]$FileName)
+            Push-Location $Directory
+            try {
+              & $commandInterpreter /d /c "$FileName < nul"
+              $exitCode = $LASTEXITCODE
+            }
+            finally {
+              Pop-Location
+            }
+            if ($exitCode -ne 0) {
+              throw "$FileName failed with exit code $exitCode"
+            }
+          }
+
+          $auxiliaryExecutables = @(
+            "BESLE-Material.exe",
+            "BESLE-General.exe",
+            "BESLE-Polycrystal-Structure.exe",
+            "BESLE-Polycrystal-Mesh.exe"
+          )
+          $hashesBefore = @{}
+          foreach ($name in $auxiliaryExecutables) {
+            $hashesBefore[$name] = (Get-FileHash -LiteralPath (Join-Path $env:BESLE_TEST_INSTALL_DIR $name) -Algorithm SHA256).Hash
+          }
+
+          $material = Join-Path $project "Material"
+          Invoke-GeneratedHelper -Directory $material -FileName "run-material.cmd"
+          $materialOutput = Join-Path $material "Data\Isotropic\Material_9.dat"
+          $materialDefaultHash = (Get-FileHash -LiteralPath $materialOutput -Algorithm SHA256).Hash
+          $materialConfig = Join-Path $material "Material.nml"
+          $text = [IO.File]::ReadAllText($materialConfig)
+          $modified = $text.Replace("2.0000000000000000d5", "1.0000000000000000d5")
+          if ($modified -eq $text) { throw "Material.nml did not contain the expected E value." }
+          [IO.File]::WriteAllText($materialConfig, $modified, $utf8NoBom)
+          Invoke-GeneratedHelper -Directory $material -FileName "run-material.cmd"
+          if ((Get-FileHash -LiteralPath $materialOutput -Algorithm SHA256).Hash -eq $materialDefaultHash) {
+            throw "Editing Material.nml did not change Material_9.dat."
+          }
+          if (@(Get-ChildItem -LiteralPath (Join-Path $material "history") -Filter "Material_9.dat" -File -Recurse).Count -eq 0) {
+            throw "The previous material output was not archived."
+          }
+
+          $general = Join-Path $project "Mesh\General"
+          Invoke-GeneratedHelper -Directory $general -FileName "run-general.cmd"
+          $generalOutput = Join-Path $general "BCs\BCs_DAT\BCs_2.dat"
+          $generalDefaultHash = (Get-FileHash -LiteralPath $generalOutput -Algorithm SHA256).Hash
+          $generalConfig = Join-Path $general "General.nml"
+          $text = [IO.File]::ReadAllText($generalConfig)
+          $modified = $text.Replace("1.0d2", "5.0d1")
+          if ($modified -eq $text) { throw "General.nml did not contain the expected traction value." }
+          [IO.File]::WriteAllText($generalConfig, $modified, $utf8NoBom)
+          Invoke-GeneratedHelper -Directory $general -FileName "run-general.cmd"
+          if ((Get-FileHash -LiteralPath $generalOutput -Algorithm SHA256).Hash -eq $generalDefaultHash) {
+            throw "Editing General.nml did not change BCs_2.dat."
+          }
+          if (@(Get-ChildItem -LiteralPath (Join-Path $general "history") -Filter "BCs_2.dat" -File -Recurse).Count -eq 0) {
+            throw "The previous general-mesh output was not archived."
+          }
+
+          $polycrystal = Join-Path $project "Mesh\Polycrystal"
+          $polyConfig = Join-Path $polycrystal "Polycrystal.nml"
+          $text = [IO.File]::ReadAllText($polyConfig)
+          $text = $text.Replace("ngrains_x = 3", "ngrains_x = 2")
+          $text = $text.Replace("ngrains_y = 4", "ngrains_y = 1")
+          $text = $text.Replace("ngrains_z = 8", "ngrains_z = 1")
+          [IO.File]::WriteAllText($polyConfig, $text, $utf8NoBom)
+          Invoke-GeneratedHelper -Directory $polycrystal -FileName "run-polycrystal.cmd"
+          $polyOutput = Join-Path $polycrystal "Export\Mesh.dat"
+          $polyDefaultHash = (Get-FileHash -LiteralPath $polyOutput -Algorithm SHA256).Hash
+          $text = [IO.File]::ReadAllText($polyConfig)
+          $modified = $text.Replace("x_max = 15.0", "x_max = 12.0")
+          if ($modified -eq $text) { throw "Polycrystal.nml did not contain the expected x_max value." }
+          [IO.File]::WriteAllText($polyConfig, $modified, $utf8NoBom)
+          Invoke-GeneratedHelper -Directory $polycrystal -FileName "run-polycrystal.cmd"
+          if ((Get-FileHash -LiteralPath $polyOutput -Algorithm SHA256).Hash -eq $polyDefaultHash) {
+            throw "Editing Polycrystal.nml did not change Mesh.dat."
+          }
+          if (@(Get-ChildItem -LiteralPath (Join-Path $polycrystal "history") -Filter "Mesh.dat" -File -Recurse).Count -eq 0) {
+            throw "The previous polycrystal output was not archived."
+          }
+
+          foreach ($name in $auxiliaryExecutables) {
+            $currentHash = (Get-FileHash -LiteralPath (Join-Path $env:BESLE_TEST_INSTALL_DIR $name) -Algorithm SHA256).Hash
+            if ($currentHash -ne $hashesBefore[$name]) {
+              throw "$name changed while editing runtime configuration."
+            }
+          }
+
+          foreach ($tool in @("Material", "General", "Polycrystal")) {
+            $toolDirectory = switch ($tool) {
+              "Material" { $material }
+              "General" { $general }
+              "Polycrystal" { $polycrystal }
+            }
+            foreach ($suffix in @("$tool-used.nml", "$tool.log")) {
+              if (-not (Test-Path -LiteralPath (Join-Path $toolDirectory $suffix) -PathType Leaf)) {
+                throw "$tool did not preserve $suffix."
+              }
+            }
+          }
+
+          $evidenceRoot = Join-Path $env:GITHUB_WORKSPACE "packaging-tests\auxiliary-runtime"
+          New-Item -ItemType Directory -Path $evidenceRoot -Force | Out-Null
+          $evidenceFiles = @(
+            $materialConfig,
+            (Join-Path $material "Material-used.nml"),
+            (Join-Path $material "Material.log"),
+            $materialOutput,
+            $generalConfig,
+            (Join-Path $general "General-used.nml"),
+            (Join-Path $general "General.log"),
+            $generalOutput,
+            $polyConfig,
+            (Join-Path $polycrystal "Polycrystal-used.nml"),
+            (Join-Path $polycrystal "Polycrystal.log"),
+            $polyOutput,
+            (Join-Path $polycrystal "Export\Mesh.vtk")
+          )
+          foreach ($path in $evidenceFiles) {
+            Copy-Item -LiteralPath $path -Destination $evidenceRoot
+          }
+
+          "BESLE_AUX_MATERIAL_OUTPUT=$materialOutput" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "BESLE_AUX_GENERAL_OUTPUT=$generalOutput" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "BESLE_AUX_POLY_OUTPUT=$polyOutput" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Run installed application without build tools on PATH
         shell: pwsh
@@ -440,6 +622,15 @@ jobs:
           if (-not (Test-Path -LiteralPath $env:BESLE_USER_CONFIG -PathType Leaf)) {
             throw "Uninstalling BESLE removed the user's BESLE.nml."
           }
+          foreach ($auxiliaryOutput in @(
+            $env:BESLE_AUX_MATERIAL_OUTPUT,
+            $env:BESLE_AUX_GENERAL_OUTPUT,
+            $env:BESLE_AUX_POLY_OUTPUT
+          )) {
+            if (-not (Test-Path -LiteralPath $auxiliaryOutput -PathType Leaf)) {
+              throw "Uninstalling BESLE removed an auxiliary user output: $auxiliaryOutput"
+            }
+          }
 
       - name: Record installer evidence
         if: always()
@@ -480,5 +671,6 @@ jobs:
             packaging-tests/installed-results/**/*.vtk
             packaging-tests/installed-BESLE.log
             packaging-tests/runtime-edit/
+            packaging-tests/auxiliary-runtime/
           if-no-files-found: warn
           retention-days: 14

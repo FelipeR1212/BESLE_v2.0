@@ -1,0 +1,299 @@
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet("Material", "General", "Polycrystal")]
+    [string]$Tool,
+    [Parameter(Mandatory = $true)]
+    [string]$WorkDirectory,
+    [switch]$NoPause
+)
+
+$ErrorActionPreference = "Stop"
+$version = "@PROJECT_VERSION@"
+$appRoot = $PSScriptRoot
+
+function Wait-BesleAuxiliary {
+    if (-not $NoPause) {
+        [void](Read-Host "Presione Enter para cerrar")
+    }
+}
+
+function Get-UniqueDirectory {
+    param(
+        [Parameter(Mandatory = $true)] [string]$Parent,
+        [Parameter(Mandatory = $true)] [string]$BaseName
+    )
+
+    $candidate = Join-Path $Parent $BaseName
+    $counter = 1
+    while (Test-Path -LiteralPath $candidate) {
+        $candidate = Join-Path $Parent "$BaseName-$counter"
+        $counter++
+    }
+    return $candidate
+}
+
+function Get-NmlString {
+    param(
+        [Parameter(Mandatory = $true)] [string]$Text,
+        [Parameter(Mandatory = $true)] [string]$Name
+    )
+
+    $escapedName = [Regex]::Escape($Name)
+    $pattern = '(?im)^\s*{0}\s*=\s*[''"]([^''"]*)[''"]' -f $escapedName
+    $match = [Regex]::Match($Text, $pattern)
+    if (-not $match.Success) {
+        throw "No se encontro $Name en el archivo NML."
+    }
+    return $match.Groups[1].Value.Trim()
+}
+
+function Get-NmlInteger {
+    param(
+        [Parameter(Mandatory = $true)] [string]$Text,
+        [Parameter(Mandatory = $true)] [string]$Name
+    )
+
+    $escapedName = [Regex]::Escape($Name)
+    $match = [Regex]::Match($Text, "(?im)^\s*$escapedName\s*=\s*([+-]?\d+)")
+    if (-not $match.Success) {
+        throw "No se encontro un entero valido para $Name en el archivo NML."
+    }
+    return [int]$match.Groups[1].Value
+}
+
+function Get-SafeProjectPath {
+    param(
+        [Parameter(Mandatory = $true)] [string]$Root,
+        [Parameter(Mandatory = $true)] [string]$RelativePath
+    )
+
+    $portablePath = $RelativePath.Replace('/', [IO.Path]::DirectorySeparatorChar)
+    $candidate = [IO.Path]::GetFullPath((Join-Path $Root $portablePath))
+    $rootPath = [IO.Path]::GetFullPath($Root)
+    $rootPrefix = $rootPath.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+    if (-not $candidate.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "La ruta de salida debe permanecer dentro del proyecto: $RelativePath"
+    }
+    return $candidate
+}
+
+function Archive-PreviousOutput {
+    param(
+        [Parameter(Mandatory = $true)] [string]$Root,
+        [Parameter(Mandatory = $true)] [string]$UsedConfig,
+        [Parameter(Mandatory = $true)] [string]$LogPath,
+        [Parameter(Mandatory = $true)] [string[]]$OutputPaths,
+        [switch]$MoveOutputs
+    )
+
+    if (-not (Test-Path -LiteralPath $UsedConfig) -and
+        -not (Test-Path -LiteralPath $LogPath)) {
+        return
+    }
+
+    $historyRoot = Join-Path $Root "history"
+    [void](New-Item -ItemType Directory -Path $historyRoot -Force)
+    $archiveDirectory = Get-UniqueDirectory `
+        -Parent $historyRoot -BaseName (Get-Date -Format "yyyyMMdd-HHmmss")
+    [void](New-Item -ItemType Directory -Path $archiveDirectory)
+
+    foreach ($metadata in @($UsedConfig, $LogPath)) {
+        if (Test-Path -LiteralPath $metadata) {
+            Move-Item -LiteralPath $metadata -Destination $archiveDirectory
+        }
+    }
+
+    $rootPrefix = ([IO.Path]::GetFullPath($Root)).TrimEnd('\', '/') + `
+        [IO.Path]::DirectorySeparatorChar
+    foreach ($outputPath in $OutputPaths) {
+        if (-not (Test-Path -LiteralPath $outputPath)) {
+            continue
+        }
+        $fullOutput = [IO.Path]::GetFullPath($outputPath)
+        if (-not $fullOutput.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "No se archivara una salida fuera del proyecto: $fullOutput"
+        }
+        $relative = $fullOutput.Substring($rootPrefix.Length)
+        $destination = Join-Path (Join-Path $archiveDirectory "outputs") $relative
+        $destinationParent = Split-Path -Parent $destination
+        [void](New-Item -ItemType Directory -Path $destinationParent -Force)
+        if ($MoveOutputs) {
+            Move-Item -LiteralPath $fullOutput -Destination $destination
+        }
+        else {
+            Copy-Item -LiteralPath $fullOutput -Destination $destination -Recurse
+        }
+    }
+}
+
+function Invoke-NativeLogged {
+    param(
+        [Parameter(Mandatory = $true)] [string]$Executable,
+        [Parameter(Mandatory = $true)] [string]$LogPath,
+        [switch]$Append
+    )
+
+    if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) {
+        throw "No se encontro el ejecutable auxiliar: $Executable"
+    }
+    if ($Append) {
+        & $Executable 2>&1 | Tee-Object -FilePath $LogPath -Append
+    }
+    else {
+        & $Executable 2>&1 | Tee-Object -FilePath $LogPath
+    }
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        throw "$([IO.Path]::GetFileName($Executable)) termino con el codigo $exitCode."
+    }
+}
+
+try {
+    $normalizedWorkDirectory = $WorkDirectory.Trim().Trim('"')
+    $workRoot = [IO.Path]::GetFullPath($normalizedWorkDirectory)
+    if (-not (Test-Path -LiteralPath $workRoot -PathType Container)) {
+        throw "No existe la carpeta auxiliar $workRoot."
+    }
+
+    $configurationName = "$Tool.nml"
+    $configurationPath = Join-Path $workRoot $configurationName
+    $usedConfiguration = Join-Path $workRoot "$Tool-used.nml"
+    $logPath = Join-Path $workRoot "$Tool.log"
+    if (-not (Test-Path -LiteralPath $configurationPath -PathType Leaf)) {
+        throw "No se encontro $configurationName en $workRoot."
+    }
+
+    $configText = [IO.File]::ReadAllText($configurationPath)
+    $outputPaths = @()
+    $moveOutputs = $false
+
+    switch ($Tool) {
+        "Material" {
+            $fileplace = Get-NmlString -Text $configText -Name "fileplace"
+            $fileName = Get-NmlString -Text $configText -Name "file_name"
+            $numberOfMaterials = Get-NmlInteger -Text $configText -Name "n_materials"
+            if ($numberOfMaterials -lt 1) {
+                throw "n_materials debe ser mayor o igual que 1."
+            }
+            if ($numberOfMaterials -eq 1) {
+                $relativeOutputs = @(Join-Path $fileplace $fileName)
+            }
+            else {
+                $relativeOutputs = @(0..($numberOfMaterials - 1) | ForEach-Object {
+                    Join-Path $fileplace "Mat_$_.dat"
+                })
+            }
+            $outputPaths = @($relativeOutputs | ForEach-Object {
+                Get-SafeProjectPath -Root $workRoot -RelativePath $_
+            })
+            $executable = Join-Path $appRoot "BESLE-Material.exe"
+            $environmentName = "BESLE_MATERIAL_CONFIG_FILE"
+        }
+        "General" {
+            $fileName = Get-NmlString -Text $configText -Name "filename_out"
+            $numberOfBoundaries = Get-NmlInteger -Text $configText -Name "NumBCS"
+            if ($numberOfBoundaries -lt 0) {
+                throw "NumBCS no puede ser negativo."
+            }
+            $meshOutputDirectory = Get-SafeProjectPath `
+                -Root $workRoot -RelativePath "Meshes/DAT"
+            $boundaryOutputDirectory = Get-SafeProjectPath `
+                -Root $workRoot -RelativePath "BCs/BCs_DAT"
+            $outputPaths = @($meshOutputDirectory, $boundaryOutputDirectory)
+            $expectedOutputs = @(
+                Get-SafeProjectPath -Root $workRoot `
+                    -RelativePath (Join-Path "Meshes/DAT" $fileName)
+            )
+            if ($numberOfBoundaries -gt 0) {
+                $expectedOutputs += @(1..$numberOfBoundaries | ForEach-Object {
+                    Get-SafeProjectPath -Root $workRoot `
+                        -RelativePath "BCs/BCs_DAT/BCs_$_.dat"
+                })
+            }
+            $moveOutputs = $true
+            $executable = Join-Path $appRoot "BESLE-General.exe"
+            $environmentName = "BESLE_GENERAL_CONFIG_FILE"
+        }
+        "Polycrystal" {
+            $ioDirectory = Get-SafeProjectPath -Root $workRoot -RelativePath "IO_files"
+            $exportDirectory = Get-SafeProjectPath -Root $workRoot -RelativePath "Export"
+            $outputPaths = @($ioDirectory, $exportDirectory)
+            $expectedOutputs = @(
+                (Get-SafeProjectPath -Root $workRoot -RelativePath "Export/Mesh.dat"),
+                (Get-SafeProjectPath -Root $workRoot -RelativePath "Export/Mesh.vtk")
+            )
+            $moveOutputs = $true
+            $structureExecutable = Join-Path $appRoot "BESLE-Polycrystal-Structure.exe"
+            $meshExecutable = Join-Path $appRoot "BESLE-Polycrystal-Mesh.exe"
+            $environmentName = "BESLE_POLYCRYSTAL_CONFIG_FILE"
+        }
+    }
+
+    Archive-PreviousOutput -Root $workRoot -UsedConfig $usedConfiguration `
+        -LogPath $logPath -OutputPaths $outputPaths -MoveOutputs:$moveOutputs
+
+    if ($Tool -eq "General") {
+        [void](New-Item -ItemType Directory -Path $meshOutputDirectory -Force)
+        [void](New-Item -ItemType Directory -Path $boundaryOutputDirectory -Force)
+    }
+    elseif ($Tool -eq "Material") {
+        foreach ($outputPath in $outputPaths) {
+            $outputParent = Split-Path -Parent $outputPath
+            [void](New-Item -ItemType Directory -Path $outputParent -Force)
+        }
+    }
+    elseif ($Tool -eq "Polycrystal") {
+        [void](New-Item -ItemType Directory -Path $ioDirectory -Force)
+        [void](New-Item -ItemType Directory -Path $exportDirectory -Force)
+    }
+
+    Copy-Item -LiteralPath $configurationPath -Destination $usedConfiguration -Force
+    [Environment]::SetEnvironmentVariable($environmentName, $configurationPath, "Process")
+
+    Push-Location $workRoot
+    try {
+        Write-Host ""
+        Write-Host "Ejecutando auxiliar $Tool de BESLE $version"
+        Write-Host "Carpeta:       $workRoot"
+        Write-Host "Configuracion: $configurationPath"
+        Write-Host ""
+        if ($Tool -eq "Polycrystal") {
+            Invoke-NativeLogged -Executable $structureExecutable -LogPath $logPath
+            Invoke-NativeLogged -Executable $meshExecutable -LogPath $logPath -Append
+        }
+        else {
+            Invoke-NativeLogged -Executable $executable -LogPath $logPath
+        }
+    }
+    finally {
+        Pop-Location
+    }
+
+    if ($Tool -eq "Material") {
+        $expectedOutputs = $outputPaths
+    }
+    foreach ($expectedOutput in $expectedOutputs) {
+        if (-not (Test-Path -LiteralPath $expectedOutput -PathType Leaf)) {
+            throw "La ejecucion no genero la salida esperada: $expectedOutput"
+        }
+    }
+
+    Write-Host ""
+    Write-Host "$Tool termino correctamente."
+    Write-Host "Configuracion usada: $usedConfiguration"
+    Write-Host "Registro:            $logPath"
+    Write-Host ""
+    Write-Host "Puede editar $configurationName y ejecutar de nuevo el mismo archivo .cmd."
+    Write-Host "No necesita recompilar. Las salidas anteriores se guardan en history."
+    Write-Host ""
+    Wait-BesleAuxiliary
+    exit 0
+}
+catch {
+    Write-Host ""
+    Write-Error $_
+    Write-Host ""
+    Wait-BesleAuxiliary
+    exit 1
+}

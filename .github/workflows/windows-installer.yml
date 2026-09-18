@@ -658,7 +658,9 @@ jobs:
           Copy-Item -LiteralPath $config -Destination (Join-Path $evidenceRoot "legacy-BESLE.nml")
           Copy-Item -LiteralPath $log -Destination (Join-Path $evidenceRoot "legacy-BESLE.log")
 
-          foreach ($processes in @(4, 8)) {
+          # Two/four ranks are mandatory acceptance. Eight ranks are probed in
+          # an isolated project below because this runner can run out of memory.
+          foreach ($processes in @(4)) {
             $selected = $oneStep.Replace("mpi_processes = 2", "mpi_processes = $processes")
             [IO.File]::WriteAllText($config, $selected, $utf8NoBom)
             Invoke-ProjectHelper
@@ -707,10 +709,93 @@ jobs:
           if ($currentHash -ne $env:BESLE_INSTALLED_EXE_HASH) {
             throw "BESLE.exe changed while selecting MPI counts."
           }
-          "Validated 2 (legacy), 4 and 8 MPI processes; invalid counts preserved outputs." |
+          "BESLE_USER_VTK=$(Join-Path $project 'Results\Results.vtk')" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "Validated 2 (legacy) and 4 MPI processes; invalid counts preserved outputs. See eight-process-probe.json for the separate eight-rank diagnostic." |
             Out-File -FilePath (Join-Path $evidenceRoot "acceptance.txt") -Encoding utf8
           # Rejected native commands intentionally returned nonzero. Only report
           # success after every count, result, hash and history assertion passed.
+          exit 0
+
+      - name: Probe eight MPI processes without hiding resource limits
+        shell: pwsh
+        run: |
+          $systemPowerShell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+          $commandInterpreter = Join-Path $env:SystemRoot "System32\cmd.exe"
+          $pythonExecutable = (Get-Command python.exe).Source
+          $outputRoot = Join-Path $env:RUNNER_TEMP "besle-eight-process-probe"
+          $evidenceRoot = Join-Path $env:GITHUB_WORKSPACE "packaging-tests\mpi-processes"
+          $env:PATH = @(
+            (Join-Path $env:SystemRoot "System32"),
+            $env:SystemRoot,
+            (Join-Path $env:SystemRoot "System32\Wbem"),
+            (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0")
+          ) -join ";"
+          & $systemPowerShell -NoLogo -NoProfile -ExecutionPolicy Bypass `
+            -File (Join-Path $env:BESLE_TEST_INSTALL_DIR "run-besle.ps1") `
+            -Mode Create -OutputRoot $outputRoot -NoPause
+          if ($LASTEXITCODE -ne 0) { throw "Could not create the isolated eight-rank project." }
+          $project = Get-ChildItem -LiteralPath $outputRoot -Directory | Select-Object -First 1
+          if ($null -eq $project) { throw "The eight-rank project was not created." }
+
+          # Use the same inputs/configuration as the two/four-rank comparison,
+          # but never replace the mandatory acceptance project's results.
+          $selected = [IO.File]::ReadAllText((Join-Path $env:BESLE_USER_PROJECT "BESLE.nml"))
+          $selected = [regex]::Replace($selected, '(?im)^([ \t]*mpi_processes[ \t]*=[ \t]*)4\b', '${1}8')
+          if ($selected -notmatch '(?im)^[ \t]*mpi_processes[ \t]*=[ \t]*8\b') {
+            throw "The probe did not select eight processes."
+          }
+          $config = Join-Path $project.FullName "BESLE.nml"
+          [IO.File]::WriteAllText($config, $selected, (New-Object System.Text.UTF8Encoding($false)))
+          Push-Location $project.FullName
+          try {
+            & $commandInterpreter /d /c "run-this-simulation.cmd < nul"
+            $probeExitCode = $LASTEXITCODE
+          }
+          finally { Pop-Location }
+
+          $log = Join-Path $project.FullName "BESLE.log"
+          $logText = [IO.File]::ReadAllText($log)
+          if ($logText -notmatch '(?m)^Procesos MPI activos: 8\r?$') {
+            throw "The probe did not actually start eight MPI processes."
+          }
+          Copy-Item -LiteralPath $config -Destination (Join-Path $evidenceRoot "8-BESLE.nml")
+          Copy-Item -LiteralPath $log -Destination (Join-Path $evidenceRoot "8-BESLE.log")
+          $record = [ordered]@{
+            requested_processes = 8
+            actual_processes_confirmed = 8
+            helper_exit_code = $probeExitCode
+            numerical_equivalence_passed = $false
+            status = "not_validated"
+          }
+
+          if ($probeExitCode -eq 0) {
+            $results = Join-Path $evidenceRoot "8-process-results"
+            Copy-Item -LiteralPath (Join-Path $project.FullName "Results") -Destination $results -Recurse
+            & $pythonExecutable (Join-Path $env:GITHUB_WORKSPACE "tools\compare_vtk.py") `
+              (Join-Path $evidenceRoot "two-process-reference") $results `
+              --rtol 1e-6 --atol 1e-9 --max-relative-l2 1e-10 `
+              --report (Join-Path $evidenceRoot "8-comparison.json")
+            if ($LASTEXITCODE -ne 0) { throw "Eight-rank numerical equivalence failed." }
+            $record.status = "passed"
+            $record.numerical_equivalence_passed = $true
+          }
+          else {
+            # Only the specifically observed MUMPS allocation failure is a
+            # resource-limited diagnostic, never a successful simulation.
+            $globalErrors = [regex]::Matches($logText, 'INFOG\(1\)\s*=\s*(-\d+)')
+            if (($globalErrors.Count -eq 0) -or
+                @($globalErrors | Where-Object { $_.Groups[1].Value -ne '-13' }).Count -gt 0) {
+              throw "The eight-rank probe failed for a reason other than MUMPS allocation error -13."
+            }
+            $record.status = "resource_limited_not_validated"
+            $record.mumps_error = -13
+            $record.explanation = "MUMPS could not allocate workspace on this Windows runner. Eight-process simulation is not certified; no fallback or solver change was applied."
+            Write-Warning $record.explanation
+          }
+          $record | ConvertTo-Json | Out-File -FilePath (Join-Path $evidenceRoot "eight-process-probe.json") -Encoding utf8
+          $summary = "Eight MPI processes: $($record.status). Numerical equivalence passed: $($record.numerical_equivalence_passed)."
+          $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           exit 0
 
       - name: Uninstall BESLE and preserve user results

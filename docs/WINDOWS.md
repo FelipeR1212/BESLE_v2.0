@@ -79,6 +79,14 @@ libraries remain limited to one thread per process. The actual MPI count is
 recorded in `BESLE.log`; the two-choice menu is unchanged. For manual Linux or
 Windows commands, MPI's command-line count remains authoritative.
 
+For the published case, installed Windows acceptance requires two and four
+processes. Eight processes are retained as an isolated diagnostic: the current
+Windows runner could start all eight ranks but MUMPS workspace allocation failed
+with error `-13`. This is recorded as resource-limited, not as a numerically
+validated simulation. The launcher does not silently fall back to fewer ranks.
+Linux tests validate two, four and eight processes. Other counts/cases depend
+on the user's machine and require their own validation.
+
 The same project also contains runtime-editable auxiliary configurations:
 
 - `Material\Material.nml` with `run-material.cmd`;

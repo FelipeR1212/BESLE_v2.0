@@ -52,6 +52,15 @@ un cálculo más rápido: también depende del tamaño del problema y de la memo
 y CPU disponibles. Este parámetro no cambia el paralelismo de los generadores
 auxiliares.
 
+Alcance de las pruebas del caso publicado: Linux valida 2, 4 y 8 procesos;
+Windows valida 2 y 4. En la máquina de prueba Windows, 8 procesos se iniciaron
+correctamente, pero MUMPS no pudo reservar memoria (`INFOG(1) = -13`), por lo
+que esa cantidad no está certificada allí. La prueba conserva este diagnóstico
+por separado; no lo considera una simulación aprobada ni reduce la cantidad
+elegida automáticamente. Otras cantidades y otros casos requieren validación
+en el equipo del usuario. Consulte el [registro de la prueba de 8 procesos](https://github.com/FelipeR1212/BESLE_v2.0/actions/runs/35394062936)
+y la definición del error en la [guía oficial de MUMPS](https://mumps-solver.org/doc/userguide_5.9.1.pdf).
+
 En un transitorio configurado con `time_steps = 1`, el solver conserva el nombre
 histórico `Results.vtk`. Con varios pasos produce archivos numerados como
 `Results_1.vtk`, `Results_2.vtk`, etc. El lanzador acepta ambas formas.

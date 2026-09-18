@@ -1,9 +1,12 @@
 [CmdletBinding()]
 param(
-    [string]$LauncherPath = (Join-Path $PSScriptRoot "../packaging/windows/run-besle.ps1.in")
+    [string]$LauncherPath
 )
 
 $ErrorActionPreference = "Stop"
+if ([string]::IsNullOrWhiteSpace($LauncherPath)) {
+    $LauncherPath = Join-Path $PSScriptRoot "../packaging/windows/run-besle.ps1.in"
+}
 $tokens = $null
 $parseErrors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile(

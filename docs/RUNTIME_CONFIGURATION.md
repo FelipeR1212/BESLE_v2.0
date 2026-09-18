@@ -52,6 +52,10 @@ un cálculo más rápido: también depende del tamaño del problema y de la memo
 y CPU disponibles. Este parámetro no cambia el paralelismo de los generadores
 auxiliares.
 
+En un transitorio configurado con `time_steps = 1`, el solver conserva el nombre
+histórico `Results.vtk`. Con varios pasos produce archivos numerados como
+`Results_1.vtk`, `Results_2.vtk`, etc. El lanzador acepta ambas formas.
+
 ## Herramientas auxiliares en Windows
 
 La carpeta de simulación también incluye los generadores auxiliares de

@@ -679,7 +679,7 @@ jobs:
 
           # Invalid counts must not replace a log/result or archive anything.
           $validConfiguration = [IO.File]::ReadAllText($config)
-          $protectedFiles = @($log, (Join-Path $project "BESLE-used.nml"), (Join-Path $project "Results\Results_1.vtk"))
+          $protectedFiles = @($log, (Join-Path $project "BESLE-used.nml"), (Join-Path $project "Results\Results.vtk"))
           $protectedHashes = @($protectedFiles | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash }) -join ":"
           $historyCount = @(Get-ChildItem -LiteralPath (Join-Path $project "history") -Directory).Count
           foreach ($value in @("0", "1", "-2", "4.5", "four", "2147483648")) {
@@ -709,6 +709,9 @@ jobs:
           }
           "Validated 2 (legacy), 4 and 8 MPI processes; invalid counts preserved outputs." |
             Out-File -FilePath (Join-Path $evidenceRoot "acceptance.txt") -Encoding utf8
+          # Rejected native commands intentionally returned nonzero. Only report
+          # success after every count, result, hash and history assertion passed.
+          exit 0
 
       - name: Uninstall BESLE and preserve user results
         shell: pwsh

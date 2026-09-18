@@ -331,7 +331,9 @@ try {
         Pop-Location
     }
 
-    $vtkFiles = @(Get-ChildItem -LiteralPath (Join-Path $runDirectory "Results") -Filter "Results_*.vtk" -File)
+    # The legacy solver writes Results.vtk when time_steps = 1, and numbered
+    # files for longer runs. Also accept an edited results_file prefix.
+    $vtkFiles = @(Get-ChildItem -LiteralPath (Join-Path $runDirectory "Results") -Filter "*.vtk" -File)
     if ($vtkFiles.Count -eq 0) {
         throw "La ejecucion termino sin producir archivos VTK."
     }

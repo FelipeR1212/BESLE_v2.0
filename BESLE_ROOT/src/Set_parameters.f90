@@ -57,7 +57,7 @@ CONTAINS
 
                 IF (io_status.NE.0) THEN
                     config_status = 10
-                    config_message = 'No se pudo consultar la configuracion: '// &
+                    config_message = 'Could not inspect the configuration: '// &
                         TRIM(io_message)
                 ELSEIF (config_exists) THEN
                     OPEN(UNIT=config_unit,FILE=TRIM(config_file),STATUS='OLD', &
@@ -65,7 +65,7 @@ CONTAINS
 
                     IF (io_status.NE.0) THEN
                         config_status = 11
-                        config_message = 'No se pudo abrir la configuracion: '// &
+                        config_message = 'Could not open the configuration: '// &
                             TRIM(io_message)
                     ELSE
                         READ(config_unit,NML=BESLE_CONFIG,IOSTAT=io_status, &
@@ -74,7 +74,7 @@ CONTAINS
 
                         IF (io_status.NE.0) THEN
                             config_status = 12
-                            config_message = 'BESLE.nml contiene un valor invalido: '// &
+                            config_message = 'BESLE.nml contains an invalid value: '// &
                                 TRIM(io_message)
                         ELSE
                             config_loaded = 1
@@ -84,7 +84,7 @@ CONTAINS
                     END IF
                 ELSEIF (config_required) THEN
                     config_status = 14
-                    config_message = 'No existe BESLE_CONFIG_FILE: '//TRIM(config_file)
+                    config_message = 'BESLE_CONFIG_FILE does not exist: '//TRIM(config_file)
                 END IF
             END IF
         END IF
@@ -93,7 +93,7 @@ CONTAINS
 
         IF (config_status.NE.0) THEN
             IF (me.EQ.root) THEN
-                WRITE(error_unit,'(A)') 'ERROR DE CONFIGURACION BESLE: '// &
+                WRITE(error_unit,'(A)') 'BESLE CONFIGURATION ERROR: '// &
                     TRIM(config_message)
                 FLUSH(error_unit)
             END IF
@@ -105,15 +105,15 @@ CONTAINS
 
         IF (me.EQ.root) THEN
             CALL MPI_COMM_SIZE(MPI_COMM_WORLD,actual_processes,mpierr)
-            WRITE(*,'(A,I0)') 'Procesos MPI activos: ',actual_processes
+            WRITE(*,'(A,I0)') 'Active MPI processes: ',actual_processes
             IF (actual_processes.NE.mpi_processes) THEN
-                WRITE(*,'(A,I0,A)') 'Aviso: BESLE.nml solicita ',mpi_processes, &
-                    ' procesos; se usa la cantidad indicada a mpiexec/mpirun.'
+                WRITE(*,'(A,I0,A)') 'Warning: BESLE.nml requests ',mpi_processes, &
+                    ' processes; the mpiexec/mpirun count is used.'
             END IF
             IF (config_loaded.EQ.1) THEN
-                WRITE(*,'(A)') 'Configuracion BESLE cargada desde: '//TRIM(config_file)
+                WRITE(*,'(A)') 'BESLE configuration loaded from: '//TRIM(config_file)
             ELSE
-                WRITE(*,'(A)') 'BESLE.nml no encontrado; se usan los valores heredados.'
+                WRITE(*,'(A)') 'BESLE.nml was not found; using legacy defaults.'
             END IF
         END IF
 
@@ -173,7 +173,7 @@ CONTAINS
             config_required = .TRUE.
         ELSEIF (env_status.EQ.-1) THEN
             config_status = 13
-            config_message = 'La ruta BESLE_CONFIG_FILE supera 1024 caracteres.'
+            config_message = 'The BESLE_CONFIG_FILE path exceeds 1024 characters.'
         ELSE
             config_file = 'BESLE.nml'
         END IF
@@ -218,48 +218,48 @@ CONTAINS
 
         IF (mpi_processes.LT.2) THEN
             config_status = 33
-            config_message = 'mpi_processes debe ser un entero mayor o igual a 2.'
+            config_message = 'mpi_processes must be an integer of at least 2.'
         ELSEIF (LEN_TRIM(Mesh_file).EQ.0) THEN
             config_status = 20
-            config_message = 'mesh_file no puede estar vacio.'
+            config_message = 'mesh_file must not be empty.'
         ELSEIF (LEN_TRIM(fileplace_mesh).EQ.0) THEN
             config_status = 21
-            config_message = 'fileplace_mesh no puede estar vacio.'
+            config_message = 'fileplace_mesh must not be empty.'
         ELSEIF (scale_size_1.LE.0.d0) THEN
             config_status = 22
-            config_message = 'scale_size_1 debe ser mayor que cero.'
+            config_message = 'scale_size_1 must be greater than zero.'
         ELSEIF (LEN_TRIM(Material_coefficients_file).EQ.0) THEN
             config_status = 23
-            config_message = 'material_coefficients_file no puede estar vacio.'
+            config_message = 'material_coefficients_file must not be empty.'
         ELSEIF (LEN_TRIM(fileplace_material).EQ.0) THEN
             config_status = 24
-            config_message = 'fileplace_material no puede estar vacio.'
+            config_message = 'fileplace_material must not be empty.'
         ELSEIF (scale_prop_mat.LE.0.d0) THEN
             config_status = 25
-            config_message = 'scale_prop_mat debe ser mayor que cero.'
+            config_message = 'scale_prop_mat must be greater than zero.'
         ELSEIF ((Transient.NE.0).AND.(Transient.NE.1)) THEN
             config_status = 26
-            config_message = 'transient solo admite 0 o 1.'
+            config_message = 'transient must be 0 or 1.'
         ELSEIF ((Transient.EQ.1).AND.(Time_steps.LE.0)) THEN
             config_status = 27
-            config_message = 'time_steps debe ser positivo para un analisis transitorio.'
+            config_message = 'time_steps must be positive for transient analysis.'
         ELSEIF ((Transient.EQ.1).AND.(Dt.LE.0.d0)) THEN
             config_status = 28
-            config_message = 'dt debe ser positivo para un analisis transitorio.'
+            config_message = 'dt must be positive for transient analysis.'
         ELSEIF (density.LE.0.d0) THEN
             config_status = 29
-            config_message = 'density debe ser mayor que cero.'
+            config_message = 'density must be greater than zero.'
         ELSEIF ((TRIM(load_profile).NE.'ramp').AND. &
             (TRIM(load_profile).NE.'Heaviside').AND. &
             (TRIM(load_profile).NE.'harmonic')) THEN
             config_status = 30
-            config_message = 'load_profile debe ser ramp, Heaviside o harmonic.'
+            config_message = 'load_profile must be ramp, Heaviside or harmonic.'
         ELSEIF (LEN_TRIM(Results_file).EQ.0) THEN
             config_status = 31
-            config_message = 'results_file no puede estar vacio.'
+            config_message = 'results_file must not be empty.'
         ELSEIF (LEN_TRIM(fileplace_results).EQ.0) THEN
             config_status = 32
-            config_message = 'fileplace_results no puede estar vacio.'
+            config_message = 'fileplace_results must not be empty.'
         END IF
 
     END SUBROUTINE Validate_parameters

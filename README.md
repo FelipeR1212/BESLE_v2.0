@@ -155,3 +155,8 @@ The Windows simulation launcher reads `mpi_processes` from the same `BESLE.nml`
 file to choose the MPI process count without recompilation. The default is two
 processes, with one numerical thread per process; older projects without this
 field remain compatible.
+
+The Windows installer and BESLE runtime interface are English-only, with no
+language selection dialog. The startup banner retains the original author,
+contributors and coordinator, and lists Andres Felipe Ramirez Correa under
+Contributions.

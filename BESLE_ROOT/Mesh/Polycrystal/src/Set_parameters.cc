@@ -37,7 +37,7 @@ std::string lower_case(const std::string &value)
 
 void configuration_error(const std::string &message)
 {
-    std::fprintf(stderr, "ERROR DE CONFIGURACION POLYCRYSTAL: %s\n", message.c_str());
+    std::fprintf(stderr, "POLYCRYSTAL CONFIGURATION ERROR: %s\n", message.c_str());
     std::exit(EXIT_FAILURE);
 }
 
@@ -58,13 +58,13 @@ int parse_integer(const std::string &name, const std::string &raw_value)
     long parsed;
 
     if (value.empty()) {
-        configuration_error("El parametro " + name + " no tiene valor.");
+        configuration_error("Parameter " + name + " has no value.");
     }
     errno = 0;
     parsed = std::strtol(value.c_str(), &end, 10);
     if (errno != 0 || end == value.c_str() || *end != '\0' ||
         parsed < INT_MIN || parsed > INT_MAX) {
-        configuration_error("El parametro " + name + " no es un entero valido: " + value);
+        configuration_error("Parameter " + name + " is not a valid integer: " + value);
     }
     return static_cast<int>(parsed);
 }
@@ -77,7 +77,7 @@ double parse_real(const std::string &name, const std::string &raw_value)
     double parsed;
 
     if (value.empty()) {
-        configuration_error("El parametro " + name + " no tiene valor.");
+        configuration_error("Parameter " + name + " has no value.");
     }
     for (index = 0; index < value.size(); ++index) {
         if (value[index] == 'd' || value[index] == 'D') {
@@ -87,7 +87,7 @@ double parse_real(const std::string &name, const std::string &raw_value)
     errno = 0;
     parsed = std::strtod(value.c_str(), &end);
     if (errno != 0 || end == value.c_str() || *end != '\0') {
-        configuration_error("El parametro " + name + " no es un real valido: " + value);
+        configuration_error("Parameter " + name + " is not a valid real number: " + value);
     }
     return parsed;
 }
@@ -112,7 +112,7 @@ void assign_parameter(const std::string &raw_name, const std::string &value)
     } else if (name == "dm") {
         dm = parse_integer(name, value);
     } else {
-        configuration_error("Parametro desconocido: " + raw_name);
+        configuration_error("Unknown parameter: " + raw_name);
     }
 }
 
@@ -126,7 +126,7 @@ void read_configuration(const std::string &path)
     bool group_finished = false;
 
     if (!input) {
-        configuration_error("No se pudo abrir " + path + ".");
+        configuration_error("Could not open " + path + ".");
     }
 
     while (std::getline(input, line)) {
@@ -147,16 +147,16 @@ void read_configuration(const std::string &path)
         if (!inside_group) {
             if (line[0] == '&') {
                 if (lower_case(trim(line)) != "&polycrystal_config") {
-                    configuration_error("Grupo NML desconocido en " + path + ".");
+                    configuration_error("Unknown NML group in " + path + ".");
                 }
                 inside_group = true;
                 group_found = true;
                 continue;
             }
             if (group_finished) {
-                configuration_error("Hay contenido despues del cierre de " + path + ".");
+                configuration_error("There is content after the closing delimiter in " + path + ".");
             }
-            location << "Contenido fuera del grupo NML en la linea " << line_number << ".";
+            location << "Content outside the NML group at line " << line_number << ".";
             configuration_error(location.str());
         }
 
@@ -168,33 +168,33 @@ void read_configuration(const std::string &path)
 
         separator = line.find('=');
         if (separator == std::string::npos || separator == 0) {
-            location << "Asignacion invalida en la linea " << line_number << ".";
+            location << "Invalid assignment at line " << line_number << ".";
             configuration_error(location.str());
         }
         assign_parameter(line.substr(0, separator), line.substr(separator + 1));
     }
 
     if (!group_found) {
-        configuration_error("No se encontro el grupo &POLYCRYSTAL_CONFIG en " + path + ".");
+        configuration_error("The &POLYCRYSTAL_CONFIG group was not found in " + path + ".");
     }
     if (inside_group || !group_finished) {
-        configuration_error("Falta '/' al final de " + path + ".");
+        configuration_error("Missing '/' at the end of " + path + ".");
     }
 }
 
 void validate_configuration()
 {
     if (ngrains_x < 1 || ngrains_y < 1 || ngrains_z < 1) {
-        configuration_error("ngrains_x, ngrains_y y ngrains_z deben ser mayores que cero.");
+        configuration_error("ngrains_x, ngrains_y and ngrains_z must be greater than zero.");
     }
     if (x_max <= 0.0 || y_max <= 0.0 || z_max <= 0.0) {
-        configuration_error("x_max, y_max y z_max deben ser mayores que cero.");
+        configuration_error("x_max, y_max and z_max must be greater than zero.");
     }
     if (stochastic != 0 && stochastic != 1) {
-        configuration_error("stochastic debe ser 0 o 1.");
+        configuration_error("stochastic must be 0 or 1.");
     }
     if (dm < 1) {
-        configuration_error("dm debe ser mayor o igual que 1.");
+        configuration_error("dm must be at least 1.");
     }
 }
 

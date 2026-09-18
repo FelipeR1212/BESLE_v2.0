@@ -26,10 +26,11 @@ VersionInfoVersion={#MyAppVersion}.0
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersion}
 SetupLogging=yes
+ShowLanguageDialog=no
+UsePreviousLanguage=no
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
-Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -42,5 +43,5 @@ Name: "{group}\BESLE"; Filename: "{app}\{#MyAppLauncher}"
 Name: "{autodesktop}\BESLE"; Filename: "{app}\{#MyAppLauncher}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\redist\msmpisetup.exe"; Parameters: "-unattend"; StatusMsg: "Instalando Microsoft MPI..."; Flags: waituntilterminated runhidden; Check: not FileExists(ExpandConstant('{autopf}\Microsoft MPI\Bin\mpiexec.exe'))
-Filename: "{app}\{#MyAppLauncher}"; Description: "Ejecutar BESLE"; Flags: postinstall nowait skipifsilent unchecked
+Filename: "{app}\redist\msmpisetup.exe"; Parameters: "-unattend"; StatusMsg: "Installing Microsoft MPI..."; Flags: waituntilterminated runhidden; Check: not FileExists(ExpandConstant('{autopf}\Microsoft MPI\Bin\mpiexec.exe'))
+Filename: "{app}\{#MyAppLauncher}"; Description: "Launch BESLE"; Flags: postinstall nowait skipifsilent unchecked

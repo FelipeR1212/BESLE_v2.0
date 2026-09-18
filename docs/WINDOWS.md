@@ -60,6 +60,14 @@ It installs BESLE under Program Files and creates an optional desktop shortcut.
 If Microsoft MPI is missing, the verified Microsoft redistributable is installed
 silently.
 
+Installation and the BESLE runtime interface are English-only. The installer
+bundles only English messages, disables language selection and does not reuse
+an earlier installation's language. Menus, configuration errors, auxiliary
+launchers and editable NML instructions use English; generated CMD helpers
+suppress Windows' localized pause prompt and display their own English prompt.
+Windows-owned UI, such as SmartScreen, is controlled by the operating system.
+Existing user projects are preserved rather than having their comments rewritten.
+
 The launcher deliberately offers only two choices: an optional one-step test to
 verify the installation, or creating a simulation folder without running any
 calculation. In both cases BESLE creates a separate project under

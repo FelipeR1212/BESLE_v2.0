@@ -26,7 +26,7 @@ CONTAINS
         explicit_config = env_status == 0 .AND. env_length > 0
 
         IF (env_status == -1) THEN
-            CALL Configuration_error('La ruta de BESLE_MATERIAL_CONFIG_FILE es demasiado larga.')
+            CALL Configuration_error('The BESLE_MATERIAL_CONFIG_FILE path is too long.')
         ELSE IF (.NOT. explicit_config) THEN
             config_file = 'Material.nml'
         END IF
@@ -34,20 +34,20 @@ CONTAINS
         INQUIRE(FILE=TRIM(config_file), EXIST=config_exists)
         IF (.NOT. config_exists) THEN
             IF (explicit_config) THEN
-                CALL Configuration_error('No se encontro el archivo: '//TRIM(config_file))
+                CALL Configuration_error('File not found: '//TRIM(config_file))
             END IF
         ELSE
             OPEN(NEWUNIT=config_unit, FILE=TRIM(config_file), STATUS='OLD', &
                 ACTION='READ', IOSTAT=io_status, IOMSG=io_message)
             IF (io_status /= 0) THEN
-                CALL Configuration_error('No se pudo abrir '//TRIM(config_file)//': '// &
+                CALL Configuration_error('Could not open '//TRIM(config_file)//': '// &
                     TRIM(io_message))
             END IF
 
             READ(config_unit, NML=MATERIAL_CONFIG, IOSTAT=io_status, IOMSG=io_message)
             CLOSE(config_unit)
             IF (io_status /= 0) THEN
-                CALL Configuration_error('No se pudo leer '//TRIM(config_file)//': '// &
+                CALL Configuration_error('Could not read '//TRIM(config_file)//': '// &
                     TRIM(io_message))
             END IF
         END IF
@@ -59,7 +59,7 @@ CONTAINS
             input_file = TRIM(fileplace)//TRIM(file_name)
             INQUIRE(FILE=TRIM(input_file), EXIST=input_exists)
             IF (.NOT. input_exists) THEN
-                CALL Configuration_error('No se encontro el archivo de entrada: '// &
+                CALL Configuration_error('Input file not found: '// &
                     TRIM(input_file))
             END IF
         END IF
@@ -105,8 +105,8 @@ CONTAINS
         CASE ('multiple_aniso')
             Material = 'Multiple_aniso'
         CASE DEFAULT
-            CALL Configuration_error('material debe ser Isotropic, Anisotropic, '// &
-                'Multiple_iso o Multiple_aniso.')
+            CALL Configuration_error('material must be Isotropic, Anisotropic, '// &
+                'Multiple_iso or Multiple_aniso.')
         END SELECT
 
         normalized = Lower_case(TRIM(ADJUSTL(Lattice)))
@@ -116,7 +116,7 @@ CONTAINS
         CASE ('')
             Lattice = ''
         CASE DEFAULT
-            CALL Configuration_error('lattice debe ser cubic, hcp, trigonal o full.')
+            CALL Configuration_error('lattice must be cubic, hcp, trigonal or full.')
         END SELECT
 
         fileplace = TRIM(ADJUSTL(fileplace))
@@ -132,40 +132,40 @@ CONTAINS
 
     SUBROUTINE Validate_configuration
         IF (LEN_TRIM(fileplace) == 0) THEN
-            CALL Configuration_error('fileplace no puede estar vacio.')
+            CALL Configuration_error('fileplace must not be empty.')
         END IF
         IF (LEN_TRIM(file_name) == 0) THEN
-            CALL Configuration_error('file_name no puede estar vacio.')
+            CALL Configuration_error('file_name must not be empty.')
         END IF
         IF (n_materials < 1) THEN
-            CALL Configuration_error('n_materials debe ser mayor o igual que 1.')
+            CALL Configuration_error('n_materials must be at least 1.')
         END IF
         IF (Material == 'Isotropic') THEN
             IF (n_materials /= 1) THEN
-                CALL Configuration_error('Isotropic admite exactamente un material.')
+                CALL Configuration_error('Isotropic requires exactly one material.')
             END IF
             IF (E <= 0.d0) THEN
-                CALL Configuration_error('E debe ser mayor que cero.')
+                CALL Configuration_error('E must be greater than zero.')
             END IF
             IF (nu <= -1.d0 .OR. nu >= 0.5d0) THEN
-                CALL Configuration_error('nu debe ser mayor que -1 y menor que 0.5.')
+                CALL Configuration_error('nu must be greater than -1 and less than 0.5.')
             END IF
         END IF
         IF (Material == 'Anisotropic') THEN
             IF (LEN_TRIM(Lattice) == 0) THEN
-                CALL Configuration_error('lattice es obligatorio para Anisotropic.')
+                CALL Configuration_error('lattice is required for Anisotropic.')
             END IF
             IF (z_x_z /= 0 .AND. z_x_z /= 1) THEN
-                CALL Configuration_error('z_x_z debe ser 0 o 1.')
+                CALL Configuration_error('z_x_z must be 0 or 1.')
             END IF
             IF (x_y_z /= 0 .AND. x_y_z /= 1) THEN
-                CALL Configuration_error('x_y_z debe ser 0 o 1.')
+                CALL Configuration_error('x_y_z must be 0 or 1.')
             END IF
             IF (z_x_z + x_y_z /= 1) THEN
-                CALL Configuration_error('Seleccione exactamente una rotacion: z_x_z o x_y_z.')
+                CALL Configuration_error('Select exactly one rotation convention: z_x_z or x_y_z.')
             END IF
             IF (n_materials == 1 .AND. C11 <= 0.d0) THEN
-                CALL Configuration_error('C11 debe ser mayor que cero para Anisotropic.')
+                CALL Configuration_error('C11 must be greater than zero for Anisotropic.')
             END IF
         END IF
     END SUBROUTINE Validate_configuration
@@ -192,7 +192,7 @@ CONTAINS
 
     SUBROUTINE Configuration_error(message)
         CHARACTER(LEN=*), INTENT(IN) :: message
-        WRITE(*,'(A)') 'ERROR DE CONFIGURACION MATERIAL: '//TRIM(message)
+        WRITE(*,'(A)') 'MATERIAL CONFIGURATION ERROR: '//TRIM(message)
         ERROR STOP 1
     END SUBROUTINE Configuration_error
 

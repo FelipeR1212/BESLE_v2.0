@@ -1,5 +1,5 @@
-! Configuracion editable del generador de coeficientes de material.
-! Edite este archivo y ejecute run-material.cmd. No se recompila BESLE.
+! Editable configuration for the material coefficient generator.
+! Edit this file and run run-material.cmd. Recompilation is not required.
 &MATERIAL_CONFIG
     fileplace = 'Data/Isotropic/'
     file_name = 'Material_9.dat'
@@ -32,7 +32,7 @@
     C56 = 0.0d0
     C66 = 0.0d0
 
-    ! Convenciones de rotacion disponibles para materiales anisotropicos.
+    ! Available rotation conventions for anisotropic materials.
     z_x_z = 0
     x_y_z = 1
     theta_x = 0.0d0

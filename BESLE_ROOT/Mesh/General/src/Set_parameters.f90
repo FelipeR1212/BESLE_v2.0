@@ -46,7 +46,7 @@ CONTAINS
         explicit_config = env_status == 0 .AND. env_length > 0
 
         IF (env_status == -1) THEN
-            CALL Configuration_error('La ruta de BESLE_GENERAL_CONFIG_FILE es demasiado larga.')
+            CALL Configuration_error('The BESLE_GENERAL_CONFIG_FILE path is too long.')
         ELSE IF (.NOT. explicit_config) THEN
             config_file = 'General.nml'
         END IF
@@ -54,19 +54,19 @@ CONTAINS
         INQUIRE(FILE=TRIM(config_file), EXIST=config_exists)
         IF (.NOT. config_exists) THEN
             IF (explicit_config) THEN
-                CALL Configuration_error('No se encontro el archivo: '//TRIM(config_file))
+                CALL Configuration_error('File not found: '//TRIM(config_file))
             END IF
         ELSE
             OPEN(NEWUNIT=config_unit, FILE=TRIM(config_file), STATUS='OLD', &
                 ACTION='READ', IOSTAT=io_status, IOMSG=io_message)
             IF (io_status /= 0) THEN
-                CALL Configuration_error('No se pudo abrir '//TRIM(config_file)//': '// &
+                CALL Configuration_error('Could not open '//TRIM(config_file)//': '// &
                     TRIM(io_message))
             END IF
             READ(config_unit, NML=GENERAL_CONFIG, IOSTAT=io_status, IOMSG=io_message)
             CLOSE(config_unit)
             IF (io_status /= 0) THEN
-                CALL Configuration_error('No se pudo leer '//TRIM(config_file)//': '// &
+                CALL Configuration_error('Could not read '//TRIM(config_file)//': '// &
                     TRIM(io_message))
             END IF
         END IF
@@ -76,7 +76,7 @@ CONTAINS
 
         INQUIRE(FILE=TRIM(filename_in), EXIST=input_exists)
         IF (.NOT. input_exists) THEN
-            CALL Configuration_error('No se encontro la malla OBJ: '//TRIM(filename_in))
+            CALL Configuration_error('OBJ mesh not found: '//TRIM(filename_in))
         END IF
         DO index = 1, NumBCS
             WRITE(boundary_number, '(I0)') index
@@ -84,7 +84,7 @@ CONTAINS
                 TRIM(boundary_number)//'.obj'
             INQUIRE(FILE=TRIM(boundary_file), EXIST=input_exists)
             IF (.NOT. input_exists) THEN
-                CALL Configuration_error('No se encontro la condicion de borde: '// &
+                CALL Configuration_error('Boundary condition not found: '// &
                     TRIM(boundary_file))
             END IF
         END DO
@@ -169,26 +169,26 @@ CONTAINS
         INTEGER :: index, component
 
         IF (LEN_TRIM(filename_in) == 0) THEN
-            CALL Configuration_error('filename_in no puede estar vacio.')
+            CALL Configuration_error('filename_in must not be empty.')
         END IF
         IF (LEN_TRIM(filename_out) == 0) THEN
-            CALL Configuration_error('filename_out no puede estar vacio.')
+            CALL Configuration_error('filename_out must not be empty.')
         END IF
         IF (LEN_TRIM(BCSfilesPlace_in) == 0) THEN
-            CALL Configuration_error('BCSfilesPlace_in no puede estar vacio.')
+            CALL Configuration_error('BCSfilesPlace_in must not be empty.')
         END IF
         IF (.NOT. Is_analysis_type(AnalysisType)) THEN
-            CALL Configuration_error('AnalysisType debe ser elastostatic, '// &
-                'quasi-elastostatic o elastodynamic.')
+            CALL Configuration_error('AnalysisType must be elastostatic, '// &
+                'quasi-elastostatic or elastodynamic.')
         END IF
         IF (Nsteps < 1) THEN
-            CALL Configuration_error('Nsteps debe ser mayor o igual que 1.')
+            CALL Configuration_error('Nsteps must be at least 1.')
         END IF
         IF (NumBCS < 0 .OR. NumBCS > MAX_BOUNDARY_CONDITIONS) THEN
-            CALL Configuration_error('NumBCS debe estar entre 0 y 1000.')
+            CALL Configuration_error('NumBCS must be between 0 and 1000.')
         END IF
         IF (MeshNumPress < 0 .OR. MeshNumPress > 12) THEN
-            CALL Configuration_error('MeshNumPress debe estar entre 0 y 12.')
+            CALL Configuration_error('MeshNumPress must be between 0 and 12.')
         END IF
 
         DO index = 1, NumBCS
@@ -196,35 +196,35 @@ CONTAINS
             CASE ('xyz')
                 DO component = 1, 3
                     IF (.NOT. Is_xyz_bc_type(entries(index)%bc_type(component))) THEN
-                        CALL Boundary_error(index, 'bc_type debe ser displacement, '// &
-                            'traction o free para xyz.')
+                        CALL Boundary_error(index, 'bc_type must be displacement, '// &
+                            'traction or free for xyz.')
                     END IF
                     IF (entries(index)%bc_type(component) /= 'free' .AND. &
                         AnalysisType /= 'elastostatic' .AND. &
                         .NOT. Is_function_type(entries(index)%function_type(component))) THEN
-                        CALL Boundary_error(index, 'function_type no es valido para xyz.')
+                        CALL Boundary_error(index, 'function_type is not valid for xyz.')
                     END IF
                 END DO
             CASE ('normal')
                 IF (entries(index)%bc_type(4) /= 'displacement' .AND. &
                     entries(index)%bc_type(4) /= 'traction') THEN
-                    CALL Boundary_error(index, 'bc_type(4) debe ser displacement o '// &
-                        'traction para normal.')
+                    CALL Boundary_error(index, 'bc_type(4) must be displacement or '// &
+                        'traction for normal.')
                 END IF
                 IF (AnalysisType /= 'elastostatic' .AND. &
                     .NOT. Is_function_type(entries(index)%function_type(4))) THEN
-                    CALL Boundary_error(index, 'function_type(4) no es valido para normal.')
+                    CALL Boundary_error(index, 'function_type(4) is not valid for normal.')
                 END IF
             CASE ('load')
                 IF (NORM2(entries(index)%load_direction) <= 0.d0) THEN
-                    CALL Boundary_error(index, 'load_direction no puede ser el vector cero.')
+                    CALL Boundary_error(index, 'load_direction must not be the zero vector.')
                 END IF
                 IF (AnalysisType /= 'elastostatic' .AND. &
                     .NOT. Is_function_type(entries(index)%function_type(5))) THEN
-                    CALL Boundary_error(index, 'function_type(5) no es valido para load.')
+                    CALL Boundary_error(index, 'function_type(5) is not valid for load.')
                 END IF
             CASE DEFAULT
-                CALL Boundary_error(index, 'direction debe ser xyz, normal o load.')
+                CALL Boundary_error(index, 'direction must be xyz, normal or load.')
             END SELECT
         END DO
     END SUBROUTINE Validate_configuration
@@ -369,12 +369,12 @@ CONTAINS
         CHARACTER(LEN=20) :: number
 
         WRITE(number, '(I0)') index
-        CALL Configuration_error('Condicion de borde '//TRIM(number)//': '//TRIM(message))
+        CALL Configuration_error('Boundary condition '//TRIM(number)//': '//TRIM(message))
     END SUBROUTINE Boundary_error
 
     SUBROUTINE Configuration_error(message)
         CHARACTER(LEN=*), INTENT(IN) :: message
-        WRITE(*,'(A)') 'ERROR DE CONFIGURACION GENERAL: '//TRIM(message)
+        WRITE(*,'(A)') 'GENERAL CONFIGURATION ERROR: '//TRIM(message)
         ERROR STOP 1
     END SUBROUTINE Configuration_error
 

@@ -30,6 +30,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Verify English-only UI sources and contributor credits
+        run: python3 tools/check_english_ui.py
+
       - name: Install numerical dependencies
         run: |
           sudo apt-get update
@@ -91,9 +94,11 @@ jobs:
       - name: Run default external configuration
         working-directory: BESLE_ROOT
         run: |
+          set -o pipefail
           rm -rf Results OOC
           mkdir -p Results OOC ../validation/default-results
-          mpiexec -n 2 ../build/bin/BESLE
+          mpiexec -n 2 ../build/bin/BESLE | tee ../validation/default-BESLE.log
+          python3 ../tools/check_english_ui.py --log ../validation/default-BESLE.log
           cp Results/*.vtk ../validation/default-results/
 
       - name: Build published-code baseline
@@ -284,9 +289,9 @@ jobs:
           test "$material_status" -ne 0
           test "$general_status" -ne 0
           test "$polycrystal_status" -ne 0
-          grep -q 'ERROR DE CONFIGURACION MATERIAL' validation/invalid-material.log
-          grep -q 'ERROR DE CONFIGURACION GENERAL' validation/invalid-general.log
-          grep -q 'ERROR DE CONFIGURACION POLYCRYSTAL' validation/invalid-polycrystal.log
+          grep -q 'MATERIAL CONFIGURATION ERROR' validation/invalid-material.log
+          grep -q 'GENERAL CONFIGURATION ERROR' validation/invalid-general.log
+          grep -q 'POLYCRYSTAL CONFIGURATION ERROR' validation/invalid-polycrystal.log
 
       - name: Verify default configuration against baseline
         run: |
@@ -339,7 +344,7 @@ jobs:
               BESLE_CONFIG_FILE="$PWD/BESLE.nml" mpiexec --oversubscribe -n "$processes" \
                 "$GITHUB_WORKSPACE/build/bin/BESLE"
             ) > "$project/BESLE.log" 2>&1
-            grep -q "^Procesos MPI activos: $processes$" "$project/BESLE.log"
+            grep -q "^Active MPI processes: $processes$" "$project/BESLE.log"
             python tools/compare_vtk.py validation/default-results "$project/Results" \
               --rtol 1e-6 --atol 1e-9 --max-relative-l2 1e-10 \
               --report "validation/mpi-processes/$processes-comparison.json"
@@ -356,7 +361,7 @@ jobs:
             BESLE_CONFIG_FILE="$PWD/BESLE.nml" mpiexec -n 2 \
               "$GITHUB_WORKSPACE/build/bin/BESLE"
           ) > "$project/BESLE.log" 2>&1
-          grep -q '^Procesos MPI activos: 2$' "$project/BESLE.log"
+          grep -q '^Active MPI processes: 2$' "$project/BESLE.log"
           python tools/compare_vtk.py validation/default-results "$project/Results" \
             --rtol 0 --atol 0 --max-relative-l2 0 \
             --report validation/mpi-processes/legacy-comparison.json
@@ -377,7 +382,7 @@ jobs:
             status=$?
             set -e
             test "$status" -ne 0
-            grep -q 'ERROR DE CONFIGURACION BESLE' "$project/rejected.log"
+            grep -q 'BESLE CONFIGURATION ERROR' "$project/rejected.log"
             test -z "$(find "$project/Results" -type f -print -quit)"
           done
 
@@ -400,7 +405,7 @@ jobs:
             echo "BESLE accepted an invalid negative time step." >&2
             exit 1
           fi
-          grep -q 'ERROR DE CONFIGURACION BESLE' validation/invalid-config.log
+          grep -q 'BESLE CONFIGURATION ERROR' validation/invalid-config.log
 
       - name: Record Linux environment
         run: |

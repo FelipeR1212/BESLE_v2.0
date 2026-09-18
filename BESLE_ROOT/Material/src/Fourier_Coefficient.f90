@@ -18,7 +18,7 @@ SUBROUTINE start_greet
     WRITE(*,*) '*****************************************************************************'
     WRITE(*,*) '              SOFTWARE FOR COMPUTING THE FOURIER COEFFICIENTS                '
     WRITE(*,*) '' 
-	WRITE(*,*) 'By Andrés F. Galvis and Daniel M. Prada'
+	WRITE(*,*) 'By Andres F. Galvis and Daniel M. Prada'
 	WRITE(*,*) 'Department of Computational Mechanics'
 	WRITE(*,*) 'School of Mechanical Engineering'
 	WRITE(*,*) 'University of Campinas'
@@ -614,4 +614,3 @@ SUBROUTINE start_greet
     END SUBROUTINE SexticRoots
 !===============================================================================!
 END MODULE Fourier_Coefficient
-

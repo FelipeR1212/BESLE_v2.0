@@ -8,6 +8,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# Use English framework diagnostics without changing numeric parsing culture.
+[Threading.Thread]::CurrentThread.CurrentUICulture =
+    [Globalization.CultureInfo]::GetCultureInfo("en-US")
 $version = "@PROJECT_VERSION@"
 $appRoot = $PSScriptRoot
 $executable = Join-Path $appRoot "BESLE.exe"
@@ -16,7 +19,7 @@ $mpiExecutable = Join-Path ([Environment]::GetFolderPath("ProgramFiles")) "Micro
 
 function Wait-Besle {
     if (-not $NoPause) {
-        [void](Read-Host "Presione Enter para cerrar")
+        [void](Read-Host "Press Enter to close")
     }
 }
 
@@ -40,7 +43,7 @@ function Get-BesleMpiProcesses {
     $syntax = [regex]::Replace($contents, $ignoredTokens, " ")
     $group = [regex]::Match($syntax, '(?is)&BESLE_CONFIG\b(?<body>.*?)(?:/|&END\b)')
     if (-not $group.Success) {
-        throw "BESLE.nml debe contener &BESLE_CONFIG y su terminador /."
+        throw "BESLE.nml must contain &BESLE_CONFIG and its / terminator."
     }
 
     $body = $group.Groups["body"].Value
@@ -50,7 +53,7 @@ function Get-BesleMpiProcesses {
         return 2
     }
     if ($assignments.Count -ne 1) {
-        throw "mpi_processes no puede aparecer mas de una vez en BESLE.nml."
+        throw "mpi_processes must appear only once in BESLE.nml."
     }
 
     $assignment = $assignments[0]
@@ -60,7 +63,7 @@ function Get-BesleMpiProcesses {
     if ((-not $number.Success) -or
         (-not [int]::TryParse($number.Groups["value"].Value, [ref]$processes)) -or
         ($processes -lt 2)) {
-        throw "mpi_processes debe ser un entero mayor o igual a 2 (por ejemplo, 2, 4 u 8)."
+        throw "mpi_processes must be an integer of at least 2 (for example, 2, 4 or 8)."
     }
     return $processes
 }
@@ -94,25 +97,25 @@ function Write-AuxiliaryHelpers {
             Tool = "Material"
             Directory = Join-Path $RunDirectory "Material"
             File = "run-material.cmd"
-            Title = "BESLE - generar material"
+            Title = "BESLE - generate material"
         },
         @{
             Tool = "General"
             Directory = Join-Path $RunDirectory "Mesh\General"
             File = "run-general.cmd"
-            Title = "BESLE - generar malla general"
+            Title = "BESLE - generate general mesh"
         },
         @{
             Tool = "Polycrystal"
             Directory = Join-Path $RunDirectory "Mesh\Polycrystal"
             File = "run-polycrystal.cmd"
-            Title = "BESLE - generar malla policristalina"
+            Title = "BESLE - generate polycrystalline mesh"
         }
     )
 
     foreach ($helper in $helpers) {
         if (-not (Test-Path -LiteralPath $helper.Directory -PathType Container)) {
-            throw "Falta la carpeta auxiliar $($helper.Directory)."
+            throw "The auxiliary folder is missing: $($helper.Directory)."
         }
         $helperContent = @"
 @echo off
@@ -120,8 +123,9 @@ title $($helper.Title)
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$auxiliaryLauncher" -Tool $($helper.Tool) -WorkDirectory "%~dp0." -NoPause
 set "BESLE_EXIT=%ERRORLEVEL%"
 echo.
-if not "%BESLE_EXIT%"=="0" echo El auxiliar termino con errores. Revise $($helper.Tool).log.
-pause
+if not "%BESLE_EXIT%"=="0" echo The auxiliary tool failed. Check $($helper.Tool).log.
+echo Press any key to close . . .
+pause > nul
 exit /b %BESLE_EXIT%
 "@
         Set-Content -LiteralPath (Join-Path $helper.Directory $helper.File) `
@@ -138,12 +142,13 @@ function Write-ProjectHelper {
     $launcher = Join-Path $appRoot "run-besle.ps1"
     $runHelper = @"
 @echo off
-title BESLE - ejecutar simulacion configurada
+title BESLE - run configured simulation
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$launcher" -Mode Configured -ProjectPath "%~dp0." -NoPause
 set "BESLE_EXIT=%ERRORLEVEL%"
 echo.
-if not "%BESLE_EXIT%"=="0" echo La simulacion termino con errores. Revise BESLE.log.
-pause
+if not "%BESLE_EXIT%"=="0" echo The simulation failed. Check BESLE.log.
+echo Press any key to close . . .
+pause > nul
 exit /b %BESLE_EXIT%
 "@
     Set-Content -LiteralPath (Join-Path $RunDirectory "run-this-simulation.cmd") `
@@ -160,7 +165,7 @@ function New-BesleProject {
     )
 
     if (-not (Test-Path -LiteralPath $templateConfig -PathType Leaf)) {
-        throw "No se encontro la plantilla BESLE.nml en $appRoot."
+        throw "The BESLE.nml template was not found in $appRoot."
     }
 
     [void](New-Item -ItemType Directory -Path $RunsRoot -Force)
@@ -172,7 +177,7 @@ function New-BesleProject {
     foreach ($directoryName in @("Body_forces", "Cracks", "Material", "Mesh")) {
         $source = Join-Path $appRoot $directoryName
         if (-not (Test-Path -LiteralPath $source -PathType Container)) {
-            throw "Falta el directorio de entrada $directoryName."
+            throw "The input directory is missing: $directoryName."
         }
         Copy-Item -LiteralPath $source -Destination $runDirectory -Recurse
     }
@@ -230,22 +235,22 @@ try {
         while ([string]::IsNullOrWhiteSpace($Mode)) {
             Write-Host ""
             Write-Host "BESLE $version"
-            Write-Host "1. Probar o verificar la instalacion (un paso)"
-            Write-Host "2. Omitir la prueba y crear la carpeta de simulacion"
-            $selection = Read-Host "Seleccione 1 o 2"
+            Write-Host "1. Test or verify the installation (one step)"
+            Write-Host "2. Skip the test and create the simulation folder"
+            $selection = Read-Host "Select 1 or 2"
 
             switch ($selection) {
                 "1" { $Mode = "Quick" }
                 "2" { $Mode = "Create" }
                 default {
-                    Write-Host "Seleccion no valida. Escriba 1 o 2." -ForegroundColor Yellow
+                    Write-Host "Invalid selection. Enter 1 or 2." -ForegroundColor Yellow
                 }
             }
         }
     }
 
     if (($Mode -eq "Configured") -and [string]::IsNullOrWhiteSpace($ProjectPath)) {
-        throw "La ejecucion configurada requiere la carpeta de un proyecto existente."
+        throw "A configured run requires an existing project folder."
     }
 
     if ([string]::IsNullOrWhiteSpace($ProjectPath)) {
@@ -259,36 +264,36 @@ try {
         $normalizedProjectPath = $ProjectPath.Trim().Trim('"')
         $runDirectory = [IO.Path]::GetFullPath($normalizedProjectPath)
         if (-not (Test-Path -LiteralPath $runDirectory -PathType Container)) {
-            throw "No existe el proyecto $runDirectory."
+            throw "The project does not exist: $runDirectory."
         }
         Write-ProjectHelper -RunDirectory $runDirectory
     }
 
     $configPath = Join-Path $runDirectory "BESLE.nml"
     if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
-        throw "El proyecto no contiene BESLE.nml: $runDirectory."
+        throw "The project does not contain BESLE.nml: $runDirectory."
     }
 
     if ($Mode -eq "Create") {
         Write-Host ""
-        Write-Host "Carpeta de simulacion creada correctamente."
-        Write-Host "Proyecto:   $runDirectory"
-        Write-Host "Parametros: $configPath"
+        Write-Host "Simulation folder created successfully."
+        Write-Host "Project:   $runDirectory"
+        Write-Host "Parameters: $configPath"
         Write-Host ""
-        Write-Host "No se ejecuto BESLE ni se genero ningun resultado."
-        Write-Host "Edite BESLE.nml y, cuando este listo, ejecute"
-        Write-Host "run-this-simulation.cmd dentro de esta carpeta."
+        Write-Host "BESLE was not run and no results were generated."
+        Write-Host "Edit BESLE.nml and, when ready, run"
+        Write-Host "run-this-simulation.cmd inside this folder."
         Write-Host ""
         Wait-Besle
         exit 0
     }
 
     if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
-        throw "No se encontro BESLE.exe en $appRoot."
+        throw "BESLE.exe was not found in $appRoot."
     }
 
     if (-not (Test-Path -LiteralPath $mpiExecutable -PathType Leaf)) {
-        throw "No se encontro Microsoft MPI. Repare o vuelva a instalar BESLE."
+        throw "Microsoft MPI was not found. Repair or reinstall BESLE."
     }
 
     # Validate before archiving outputs, writing a log, or starting MPI.
@@ -316,15 +321,15 @@ try {
     Push-Location $runDirectory
     try {
         Write-Host ""
-        Write-Host "Ejecutando BESLE en:"
+        Write-Host "Running BESLE in:"
         Write-Host "  $runDirectory"
-        Write-Host "Configuracion:"
+        Write-Host "Configuration:"
         Write-Host "  $configPath"
-        Write-Host "Procesos MPI: $mpiProcesses (un hilo numerico por proceso)"
+        Write-Host "MPI processes: $mpiProcesses (one numerical thread per process)"
         Write-Host ""
         & $mpiExecutable -n $mpiProcesses $executable 2>&1 | Tee-Object -FilePath $logPath
         if ($LASTEXITCODE -ne 0) {
-            throw "BESLE termino con el codigo $LASTEXITCODE. Consulte $logPath."
+            throw "BESLE exited with code $LASTEXITCODE. Check $logPath."
         }
     }
     finally {
@@ -335,18 +340,18 @@ try {
     # files for longer runs. Also accept an edited results_file prefix.
     $vtkFiles = @(Get-ChildItem -LiteralPath (Join-Path $runDirectory "Results") -Filter "*.vtk" -File)
     if ($vtkFiles.Count -eq 0) {
-        throw "La ejecucion termino sin producir archivos VTK."
+        throw "The run finished without generating VTK files."
     }
 
     Write-Host ""
-    Write-Host "Ejecucion terminada correctamente."
-    Write-Host "Proyecto:      $runDirectory"
-    Write-Host "Parametros:    $configPath"
-    Write-Host "Resultados:    $(Join-Path $runDirectory 'Results')"
-    Write-Host "Registro:      $logPath"
+    Write-Host "Run completed successfully."
+    Write-Host "Project:      $runDirectory"
+    Write-Host "Parameters:    $configPath"
+    Write-Host "Results:    $(Join-Path $runDirectory 'Results')"
+    Write-Host "Log:      $logPath"
     Write-Host ""
-    Write-Host "Para cambiar la simulacion: abra BESLE.nml, guarde y ejecute"
-    Write-Host "run-this-simulation.cmd. No necesita recompilar."
+    Write-Host "To change the simulation: open BESLE.nml, save it and run"
+    Write-Host "run-this-simulation.cmd. Recompilation is not required."
     Write-Host ""
     Wait-Besle
     exit 0

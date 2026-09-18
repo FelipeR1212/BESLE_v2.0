@@ -1,5 +1,5 @@
-! Configuracion editable del generador de malla policristalina.
-! Edite este archivo y ejecute run-polycrystal.cmd. No se recompila BESLE.
+! Editable configuration for the polycrystalline mesh generator.
+! Edit this file and run run-polycrystal.cmd. Recompilation is not required.
 &POLYCRYSTAL_CONFIG
     ngrains_x = 3
     ngrains_y = 4
@@ -9,9 +9,9 @@
     y_max = 15.0
     z_max = 45.0
 
-    ! 0: centros regulares; 1: centros aleatorios dentro de cada bloque.
+    ! 0: regular centers; 1: random centers within each block.
     stochastic = 0
 
-    ! Densidad de la triangulacion de cada cara.
+    ! Triangulation density for each face.
     dm = 1
 /

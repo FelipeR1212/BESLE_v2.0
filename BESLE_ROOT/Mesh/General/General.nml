@@ -1,6 +1,6 @@
-! Configuracion editable del generador de malla general y condiciones de borde.
-! Orden de cada vector de cinco valores: x, y, z, normal, carga total.
-! Edite este archivo y ejecute run-general.cmd. No se recompila BESLE.
+! Editable configuration for the general mesh and boundary-condition generator.
+! Order of each five-value vector: x, y, z, normal, total load.
+! Edit this file and run run-general.cmd. Recompilation is not required.
 &GENERAL_CONFIG
     filename_in = 'Meshes/Obj/mesh.obj'
     filename_out = 'Input_data.dat'
@@ -24,14 +24,14 @@
     boundary_conditions(2)%linear_max = 1.0d2, 0.0d0, 1.0d2, 0.0d0, 0.0d0
     boundary_conditions(2)%load_direction = 1.0d0, 0.0d0, 0.0d0
 
-    ! Parametros para function_type='quadratic'.
+    ! Parameters for function_type='quadratic'.
     boundary_conditions(1)%quadratic_start = 0.0d0, 0.0d0, 0.0d0, 0.0d0, 0.0d0
     boundary_conditions(1)%quadratic_end = 1.0d0, 1.0d0, 1.0d0, 1.0d0, 1.0d0
     boundary_conditions(1)%quadratic_a = 0.0d0, 0.0d0, 0.0d0, 0.0d0, 0.0d0
     boundary_conditions(1)%quadratic_b = 0.0d0, 0.0d0, 0.0d0, 0.0d0, 0.0d0
     boundary_conditions(1)%quadratic_c = 0.0d0, 0.0d0, 0.0d0, 0.0d0, 0.0d0
 
-    ! Parametros para function_type='sine'.
+    ! Parameters for function_type='sine'.
     boundary_conditions(1)%sine_start = 0.0d0, 0.0d0, 0.0d0, 0.0d0, 0.0d0
     boundary_conditions(1)%sine_end = 1.0d0, 1.0d0, 1.0d0, 1.0d0, 1.0d0
     boundary_conditions(1)%sine_a = 0.0d0, 0.0d0, 0.0d0, 0.0d0, 0.0d0

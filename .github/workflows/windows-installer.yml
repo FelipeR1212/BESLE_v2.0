@@ -26,6 +26,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify English-only UI sources and contributor credits
+        shell: pwsh
+        run: |
+          python tools/check_english_ui.py
+          if ($LASTEXITCODE -ne 0) { throw "The English-only UI source audit failed." }
+
       - name: Test MPI configuration reader with Windows PowerShell 5.1
         shell: pwsh
         run: |
@@ -265,6 +271,12 @@ jobs:
             throw "BESLE installation failed with exit code $($process.ExitCode)"
           }
 
+          $uninstallKey = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{7D2A7DC5-1CD5-4A25-8C1B-87D31E2F7B10}_is1"
+          $registration = Get-ItemProperty -LiteralPath $uninstallKey
+          if ($registration.'Inno Setup: Language' -ne "english") {
+            throw "The installed/uninstaller language is not English."
+          }
+
           $mpiExecutable = Join-Path ([Environment]::GetFolderPath("ProgramFiles")) "Microsoft MPI\Bin\mpiexec.exe"
           if (-not (Test-Path -LiteralPath $mpiExecutable -PathType Leaf)) {
             throw "The BESLE installer did not restore the required Microsoft MPI runtime."
@@ -320,6 +332,18 @@ jobs:
           foreach ($requiredFile in @("BESLE.nml", "run-this-simulation.cmd")) {
             if (-not (Test-Path -LiteralPath (Join-Path $project.FullName $requiredFile) -PathType Leaf)) {
               throw "The installed create-only project is missing $requiredFile."
+            }
+          }
+          foreach ($helper in @(
+            "run-this-simulation.cmd",
+            "Material\run-material.cmd",
+            "Mesh\General\run-general.cmd",
+            "Mesh\Polycrystal\run-polycrystal.cmd"
+          )) {
+            $helperText = [IO.File]::ReadAllText((Join-Path $project.FullName $helper))
+            if (($helperText -notmatch '(?m)^echo Press any key to close') -or
+                ($helperText -notmatch '(?m)^pause > nul\r?$')) {
+              throw "The generated $helper does not use the English-only pause prompt."
             }
           }
           foreach ($unexpectedFile in @("BESLE.log", "BESLE-used.nml", "edit-BESLE-parameters.cmd")) {
@@ -484,6 +508,7 @@ jobs:
         run: |
           $outputRoot = Join-Path $env:RUNNER_TEMP "besle-installed-run"
           $systemPowerShell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+          $pythonExecutable = (Get-Command python.exe).Source
           $env:PATH = @(
             (Join-Path $env:SystemRoot "System32"),
             $env:SystemRoot,
@@ -517,6 +542,9 @@ jobs:
           $evidence = Join-Path $env:GITHUB_WORKSPACE "packaging-tests\installed-results"
           Copy-Item -LiteralPath $results -Destination $evidence -Recurse
           Copy-Item -LiteralPath (Join-Path $runDirectory.FullName "BESLE.log") -Destination (Join-Path $env:GITHUB_WORKSPACE "packaging-tests\installed-BESLE.log")
+          & $pythonExecutable (Join-Path $env:GITHUB_WORKSPACE "tools\check_english_ui.py") `
+            --log (Join-Path $runDirectory.FullName "BESLE.log")
+          if ($LASTEXITCODE -ne 0) { throw "The installed English banner audit failed." }
 
           "BESLE_USER_PROJECT=$($runDirectory.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
@@ -553,6 +581,14 @@ jobs:
           if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) {
             throw "The generated rerun helper was not found."
           }
+          # Simulate an existing project created by the Spanish launcher.
+          # Its next invocation must run correctly and regenerate English helpers.
+          $oldHelper = [IO.File]::ReadAllText($helper)
+          $oldHelper = $oldHelper.Replace("BESLE - run configured simulation", "BESLE - ejecutar simulacion configurada")
+          $oldHelper = $oldHelper.Replace("The simulation failed. Check BESLE.log.", "La simulacion termino con errores. Revise BESLE.log.")
+          $oldHelper = [regex]::Replace($oldHelper, '(?m)^echo Press any key to close[^\r\n]*\r?\n', '')
+          $oldHelper = $oldHelper.Replace("pause > nul", "pause")
+          [IO.File]::WriteAllText($helper, $oldHelper, [Text.Encoding]::ASCII)
           $commandInterpreter = Join-Path $env:SystemRoot "System32\cmd.exe"
           Push-Location $project
           try {
@@ -564,6 +600,12 @@ jobs:
           }
           if ($helperExitCode -ne 0) {
             throw "Rerunning through the generated helper failed with exit code $helperExitCode"
+          }
+          $newHelper = [IO.File]::ReadAllText($helper)
+          if (($newHelper -notmatch 'BESLE - run configured simulation') -or
+              ($newHelper -match 'ejecutar|simulacion|Revise') -or
+              ($newHelper -notmatch '(?m)^pause > nul\r?$')) {
+            throw "The old project helper was not upgraded to English."
           }
 
           $currentHash = (Get-FileHash -LiteralPath (Join-Path $env:BESLE_TEST_INSTALL_DIR "BESLE.exe") -Algorithm SHA256).Hash
@@ -650,7 +692,7 @@ jobs:
           [IO.File]::WriteAllText($config, $legacy, $utf8NoBom)
           Invoke-ProjectHelper
           $log = Join-Path $project "BESLE.log"
-          if (-not (Select-String -LiteralPath $log -Pattern '^Procesos MPI activos: 2$' -Quiet)) {
+          if (-not (Select-String -LiteralPath $log -Pattern '^Active MPI processes: 2$' -Quiet)) {
             throw "A legacy project did not launch two MPI processes."
           }
           $reference = Join-Path $evidenceRoot "two-process-reference"
@@ -664,7 +706,7 @@ jobs:
             $selected = $oneStep.Replace("mpi_processes = 2", "mpi_processes = $processes")
             [IO.File]::WriteAllText($config, $selected, $utf8NoBom)
             Invoke-ProjectHelper
-            if (-not (Select-String -LiteralPath $log -Pattern "^Procesos MPI activos: $processes`$" -Quiet)) {
+            if (-not (Select-String -LiteralPath $log -Pattern "^Active MPI processes: $processes`$" -Quiet)) {
               throw "The helper did not launch the requested $processes MPI processes."
             }
             $results = Join-Path $evidenceRoot "$processes-process-results"
@@ -756,7 +798,7 @@ jobs:
 
           $log = Join-Path $project.FullName "BESLE.log"
           $logText = [IO.File]::ReadAllText($log)
-          if ($logText -notmatch '(?m)^Procesos MPI activos: 8\r?$') {
+          if ($logText -notmatch '(?m)^Active MPI processes: 8\r?$') {
             throw "The probe did not actually start eight MPI processes."
           }
           Copy-Item -LiteralPath $config -Destination (Join-Path $evidenceRoot "8-BESLE.nml")

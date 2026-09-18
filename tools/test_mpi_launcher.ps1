@@ -12,7 +12,7 @@ $parseErrors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile(
     (Resolve-Path -LiteralPath $LauncherPath).Path, [ref]$tokens, [ref]$parseErrors)
 if ($parseErrors.Count -ne 0) {
-    throw "El lanzador contiene errores de sintaxis: $parseErrors"
+    throw "The launcher contains syntax errors: $parseErrors"
 }
 $functionAst = $ast.Find({
     param($node)
@@ -20,7 +20,7 @@ $functionAst = $ast.Find({
         ($node.Name -eq "Get-BesleMpiProcesses")
 }, $true)
 if ($null -eq $functionAst) {
-    throw "Falta Get-BesleMpiProcesses en el lanzador."
+    throw "The launcher is missing Get-BesleMpiProcesses."
 }
 # Load the actual production function without executing the launcher's menu.
 . ([scriptblock]::Create($functionAst.Extent.Text))
@@ -68,12 +68,12 @@ foreach ($case in $cases) {
     }
     if ($case.Expected -eq -1) {
         if ($null -eq $caught) {
-            throw "La configuracion invalida '$($case.Name)' fue aceptada: $result"
+            throw "Invalid configuration '$($case.Name)' was accepted: $result"
         }
     }
     elseif (($null -ne $caught) -or ($result -ne $case.Expected)) {
-        throw "Fallo '$($case.Name)': esperado $($case.Expected), obtenido $result, error $caught"
+        throw "Failed '$($case.Name)': expected $($case.Expected), received $result, error $caught"
     }
     Write-Host "OK: $($case.Name)"
 }
-Write-Host "$($cases.Count) pruebas del lector MPI aprobadas."
+Write-Host "$($cases.Count) MPI reader tests passed."

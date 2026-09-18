@@ -25,6 +25,46 @@ function Get-DefaultOutputRoot {
     return Join-Path $documents "BESLE\$version\runs"
 }
 
+function Get-BesleMpiProcesses {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ConfigurationPath
+    )
+
+    # Ignore comments and quoted strings before looking inside BESLE_CONFIG.
+    # A path or comment containing "mpi_processes = ..." is not a setting.
+    $ignoredTokens = @'
+'(?:[^']|'')*'|"(?:[^"]|"")*"|![^\r\n]*
+'@
+    $contents = [IO.File]::ReadAllText($ConfigurationPath)
+    $syntax = [regex]::Replace($contents, $ignoredTokens, " ")
+    $group = [regex]::Match($syntax, '(?is)&BESLE_CONFIG\b(?<body>.*?)(?:/|&END\b)')
+    if (-not $group.Success) {
+        throw "BESLE.nml debe contener &BESLE_CONFIG y su terminador /."
+    }
+
+    $body = $group.Groups["body"].Value
+    $assignments = [regex]::Matches($body, '(?i)(?<![a-z0-9_])mpi_processes\b\s*=')
+    if ($assignments.Count -eq 0) {
+        # Existing projects need not be rewritten or have their outputs touched.
+        return 2
+    }
+    if ($assignments.Count -ne 1) {
+        throw "mpi_processes no puede aparecer mas de una vez en BESLE.nml."
+    }
+
+    $assignment = $assignments[0]
+    $remaining = $body.Substring($assignment.Index + $assignment.Length)
+    $number = [regex]::Match($remaining, '^\s*(?<value>[+-]?[0-9]+)(?=\s|,|$)')
+    $processes = 0
+    if ((-not $number.Success) -or
+        (-not [int]::TryParse($number.Groups["value"].Value, [ref]$processes)) -or
+        ($processes -lt 2)) {
+        throw "mpi_processes debe ser un entero mayor o igual a 2 (por ejemplo, 2, 4 u 8)."
+    }
+    return $processes
+}
+
 function Get-UniqueDirectory {
     param(
         [Parameter(Mandatory = $true)]
@@ -251,6 +291,9 @@ try {
         throw "No se encontro Microsoft MPI. Repare o vuelva a instalar BESLE."
     }
 
+    # Validate before archiving outputs, writing a log, or starting MPI.
+    $mpiProcesses = Get-BesleMpiProcesses -ConfigurationPath $configPath
+
     Archive-PreviousRun -RunDirectory $runDirectory
     [void](New-Item -ItemType Directory -Path (Join-Path $runDirectory "Results") -Force)
     [void](New-Item -ItemType Directory -Path (Join-Path $runDirectory "OOC") -Force)
@@ -277,8 +320,9 @@ try {
         Write-Host "  $runDirectory"
         Write-Host "Configuracion:"
         Write-Host "  $configPath"
+        Write-Host "Procesos MPI: $mpiProcesses (un hilo numerico por proceso)"
         Write-Host ""
-        & $mpiExecutable -n 2 $executable 2>&1 | Tee-Object -FilePath $logPath
+        & $mpiExecutable -n $mpiProcesses $executable 2>&1 | Tee-Object -FilePath $logPath
         if ($LASTEXITCODE -ne 0) {
             throw "BESLE termino con el codigo $LASTEXITCODE. Consulte $logPath."
         }

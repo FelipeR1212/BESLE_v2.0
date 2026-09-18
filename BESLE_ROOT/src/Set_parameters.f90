@@ -16,6 +16,9 @@ MODULE Set_parameters
     PRIVATE
     PUBLIC :: Setup
 
+    ! Launcher setting only: MPI itself determines the actual communicator size.
+    INTEGER :: mpi_processes = 2
+
 CONTAINS
 
     SUBROUTINE Setup(me)
@@ -24,7 +27,7 @@ CONTAINS
         INTEGER, PARAMETER :: root = 0
         INTEGER, PARAMETER :: config_unit = 97
         INTEGER :: mpierr, config_status, config_loaded
-        INTEGER :: io_status
+        INTEGER :: io_status, actual_processes
         LOGICAL :: config_exists, config_required
         CHARACTER(LEN=1024) :: config_file
         CHARACTER(LEN=1024) :: config_message
@@ -33,7 +36,7 @@ CONTAINS
         NAMELIST /BESLE_CONFIG/ Mesh_file, fileplace_mesh, scale_size_1, &
             Material_coefficients_file, fileplace_material, scale_prop_mat, &
             Transient, Time_steps, Dt, density, load_profile, omega, phase, &
-            box_face_2, box_face_4, Results_file, fileplace_results
+            box_face_2, box_face_4, Results_file, fileplace_results, mpi_processes
 
         CALL Set_default_parameters
 
@@ -101,6 +104,12 @@ CONTAINS
         CALL Broadcast_parameters(root,mpierr)
 
         IF (me.EQ.root) THEN
+            CALL MPI_COMM_SIZE(MPI_COMM_WORLD,actual_processes,mpierr)
+            WRITE(*,'(A,I0)') 'Procesos MPI activos: ',actual_processes
+            IF (actual_processes.NE.mpi_processes) THEN
+                WRITE(*,'(A,I0,A)') 'Aviso: BESLE.nml solicita ',mpi_processes, &
+                    ' procesos; se usa la cantidad indicada a mpiexec/mpirun.'
+            END IF
             IF (config_loaded.EQ.1) THEN
                 WRITE(*,'(A)') 'Configuracion BESLE cargada desde: '//TRIM(config_file)
             ELSE
@@ -112,6 +121,8 @@ CONTAINS
 
 
     SUBROUTINE Set_default_parameters
+
+        mpi_processes = 2
 
         ! These expressions intentionally match the published implementation.
         Mesh_file = 'Transient'
@@ -205,7 +216,10 @@ CONTAINS
         config_status = 0
         config_message = ''
 
-        IF (LEN_TRIM(Mesh_file).EQ.0) THEN
+        IF (mpi_processes.LT.2) THEN
+            config_status = 33
+            config_message = 'mpi_processes debe ser un entero mayor o igual a 2.'
+        ELSEIF (LEN_TRIM(Mesh_file).EQ.0) THEN
             config_status = 20
             config_message = 'mesh_file no puede estar vacio.'
         ELSEIF (LEN_TRIM(fileplace_mesh).EQ.0) THEN
@@ -256,6 +270,7 @@ CONTAINS
         INTEGER, INTENT(IN) :: root
         INTEGER, INTENT(OUT) :: mpierr
 
+        CALL MPI_BCAST(mpi_processes,1,MPI_INTEGER,root,MPI_COMM_WORLD,mpierr)
         CALL MPI_BCAST(Mesh_file,LEN(Mesh_file),MPI_CHARACTER,root, &
             MPI_COMM_WORLD,mpierr)
         CALL MPI_BCAST(fileplace_mesh,LEN(fileplace_mesh),MPI_CHARACTER,root, &

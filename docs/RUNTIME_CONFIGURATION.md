@@ -29,6 +29,29 @@ Los proyectos se crean de forma predeterminada en
 `Documentos\BESLE\2.1.0\runs`; nunca se modifican los archivos instalados bajo
 `Program Files`.
 
+### Cantidad de procesos MPI
+
+La simulación principal permite elegir la cantidad de procesos en el mismo
+`BESLE.nml`, dentro de `&BESLE_CONFIG`:
+
+```fortran
+    mpi_processes = 4
+```
+
+Guarde el archivo y ejecute `run-this-simulation.cmd`. El lanzador de Windows
+lee ese valor antes de iniciar `mpiexec`. No se añaden opciones al menú ni
+archivos de configuración adicionales. El valor inicial es `2`; si un proyecto
+anterior no contiene esta línea, también se usan `2` procesos.
+
+El valor debe ser un entero mayor o igual a `2`, escrito una sola vez. Un valor
+inválido se rechaza antes de iniciar MPI o trasladar los resultados anteriores
+a `history`. `BESLE.log` registra la cantidad realmente activa. Cada proceso
+mantiene las bibliotecas numéricas limitadas a un hilo; procesos MPI, núcleos
+físicos y pasos temporales no son la misma cosa. Una cantidad mayor no garantiza
+un cálculo más rápido: también depende del tamaño del problema y de la memoria
+y CPU disponibles. Este parámetro no cambia el paralelismo de los generadores
+auxiliares.
+
 ## Herramientas auxiliares en Windows
 
 La carpeta de simulación también incluye los generadores auxiliares de
@@ -105,10 +128,17 @@ Si `BESLE_CONFIG_FILE` se define explícitamente, el archivo debe existir. Si no
 se define y `BESLE.nml` no está presente, BESLE conserva los valores históricos
 compilados para mantener compatibilidad con ejecuciones antiguas.
 
+En Linux y en ejecuciones manuales, el número de procesos se elige antes de
+iniciar BESLE, mediante `mpirun -np N` o `mpiexec -n N`. Para un archivo con
+`mpi_processes = 4`, utilice, por ejemplo, `mpirun -np 4 ./BESLE`. El solver no
+puede crear procesos retroactivamente: si la cantidad lanzada difiere de la
+configuración, muestra un aviso y conserva la cantidad indicada al comando MPI.
+
 ## Parámetros disponibles
 
 | Parámetro | Función | Valor de referencia |
 |---|---|---:|
+| `mpi_processes` | Procesos MPI solicitados al lanzador Windows (mínimo 2) | `2` |
 | `mesh_file` | Nombre del archivo de malla, sin `.dat` | `'Transient'` |
 | `fileplace_mesh` | Carpeta de la malla | `'Mesh/Box/'` |
 | `scale_size_1` | Factor de escala geométrica | `1.0000000474974513d-3` |

@@ -3,6 +3,10 @@
 ! Paths may use forward slashes on Linux and Windows and are relative to the
 ! directory where BESLE is run.
 &BESLE_CONFIG
+    ! Cantidad de procesos MPI para el lanzador Windows (minimo 2).
+    ! Cada proceso usa un hilo numerico; no es el numero de pasos temporales.
+    mpi_processes = 2
+
     mesh_file = 'Transient'
     fileplace_mesh = 'Mesh/Box/'
     scale_size_1 = 1.0000000474974513d-3

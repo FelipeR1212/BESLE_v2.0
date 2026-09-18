@@ -150,3 +150,8 @@ The runtime-configuration branch also provides editable `Material.nml`,
 `General.nml`, and `Polycrystal.nml` files with one `.cmd` runner in each
 corresponding project folder. Users can customize these auxiliary generators
 without rebuilding their Fortran, C, or C++ sources.
+
+The Windows simulation launcher reads `mpi_processes` from the same `BESLE.nml`
+file to choose the MPI process count without recompilation. The default is two
+processes, with one numerical thread per process; older projects without this
+field remain compatible.

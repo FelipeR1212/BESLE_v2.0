@@ -71,6 +71,14 @@ Editing `BESLE.nml` directly and launching
 results are archived under `history`, and uninstalling BESLE does not remove
 these user projects.
 
+The same `BESLE.nml` also selects the MPI process count with `mpi_processes = 2`
+(the default), `4`, `8`, or another integer of at least two. Missing values in
+older projects default to two. The launcher validates this field before
+archiving outputs or starting MPI, then passes it to `mpiexec -n`. Numerical
+libraries remain limited to one thread per process. The actual MPI count is
+recorded in `BESLE.log`; the two-choice menu is unchanged. For manual Linux or
+Windows commands, MPI's command-line count remains authoritative.
+
 The same project also contains runtime-editable auxiliary configurations:
 
 - `Material\Material.nml` with `run-material.cmd`;

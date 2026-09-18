@@ -324,6 +324,63 @@ jobs:
             exit 1
           fi
 
+      - name: Vary MPI count without rebuilding and keep legacy projects compatible
+        run: |
+          mkdir -p validation/mpi-processes
+          for processes in 4 8; do
+            project="validation/mpi-processes/$processes-project"
+            mkdir -p "$project/Results" "$project/OOC"
+            cp -r BESLE_ROOT/Body_forces BESLE_ROOT/Cracks BESLE_ROOT/Material \
+              BESLE_ROOT/Mesh "$project/"
+            sed "s/mpi_processes = 2/mpi_processes = $processes/" \
+              BESLE_ROOT/BESLE.nml > "$project/BESLE.nml"
+            (
+              cd "$project"
+              BESLE_CONFIG_FILE="$PWD/BESLE.nml" mpiexec --oversubscribe -n "$processes" \
+                "$GITHUB_WORKSPACE/build/bin/BESLE"
+            ) > "$project/BESLE.log" 2>&1
+            grep -q "^Procesos MPI activos: $processes$" "$project/BESLE.log"
+            python tools/compare_vtk.py validation/default-results "$project/Results" \
+              --rtol 1e-6 --atol 1e-9 --max-relative-l2 1e-10 \
+              --report "validation/mpi-processes/$processes-comparison.json"
+          done
+
+          project="validation/mpi-processes/legacy-project"
+          mkdir -p "$project/Results" "$project/OOC"
+          cp -r BESLE_ROOT/Body_forces BESLE_ROOT/Cracks BESLE_ROOT/Material \
+            BESLE_ROOT/Mesh "$project/"
+          sed '/^[[:space:]]*mpi_processes[[:space:]]*=/d' \
+            BESLE_ROOT/BESLE.nml > "$project/BESLE.nml"
+          (
+            cd "$project"
+            BESLE_CONFIG_FILE="$PWD/BESLE.nml" mpiexec -n 2 \
+              "$GITHUB_WORKSPACE/build/bin/BESLE"
+          ) > "$project/BESLE.log" 2>&1
+          grep -q '^Procesos MPI activos: 2$' "$project/BESLE.log"
+          python tools/compare_vtk.py validation/default-results "$project/Results" \
+            --rtol 0 --atol 0 --max-relative-l2 0 \
+            --report validation/mpi-processes/legacy-comparison.json
+
+      - name: Reject invalid MPI counts before computing
+        run: |
+          for value in 0 1 -2 4.5; do
+            project="validation/mpi-processes/invalid-$value"
+            mkdir -p "$project/Results"
+            sed "s/mpi_processes = 2/mpi_processes = $value/" \
+              BESLE_ROOT/BESLE.nml > "$project/BESLE.nml"
+            set +e
+            (
+              cd "$project"
+              BESLE_CONFIG_FILE="$PWD/BESLE.nml" mpiexec -n 2 \
+                "$GITHUB_WORKSPACE/build/bin/BESLE"
+            ) > "$project/rejected.log" 2>&1
+            status=$?
+            set -e
+            test "$status" -ne 0
+            grep -q 'ERROR DE CONFIGURACION BESLE' "$project/rejected.log"
+            test -z "$(find "$project/Results" -type f -print -quit)"
+          done
+
       - name: Reject an invalid external configuration
         run: |
           rm -rf validation/invalid-project
@@ -390,6 +447,9 @@ jobs:
             validation/invalid-material.log
             validation/invalid-general.log
             validation/invalid-polycrystal.log
+            validation/mpi-processes/**/*.json
+            validation/mpi-processes/**/BESLE.nml
+            validation/mpi-processes/**/*.log
           if-no-files-found: warn
           retention-days: 14
 

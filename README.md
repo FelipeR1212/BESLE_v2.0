@@ -158,5 +158,5 @@ field remain compatible.
 
 The Windows installer and BESLE runtime interface are English-only, with no
 language selection dialog. The startup banner retains the original author,
-contributors and coordinator, and lists Andres Felipe Ramirez Correa under
-Contributions.
+contributors and coordinator, adds BESLE v2.0 contributor Rahim Si Hadj Mohand,
+and lists Andres F. Ramirez Correa under Contributions.

@@ -7,12 +7,15 @@ import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRIBUTOR = "Andres Felipe Ramirez Correa"
+CONTRIBUTORS = (
+    "Rahim Si Hadj Mohand",
+    "Andres F. Ramirez Correa",
+)
 SPANS = (
     "By Andres F. Galvis",
     "Contributions: Daniel M. Prada",
     "Lucas S. Moura",
-    CONTRIBUTOR,
+    *CONTRIBUTORS,
     "Coordinator: Paulo Sollero",
     "University of Campinas",
 )
@@ -67,8 +70,11 @@ def check():
     for span in SPANS:
         if span not in banner:
             errors.append(f"Missing original credit or contributor in the banner: {span}")
-    if banner.count(CONTRIBUTOR) != 1:
-        errors.append("The new contributor must appear exactly once in the source banner.")
+    for contributor in CONTRIBUTORS:
+        if banner.count(contributor) != 1:
+            errors.append(
+                f"Contributor {contributor} must appear exactly once in the source banner."
+            )
 
     if args.log:
         raw = args.log.read_bytes()

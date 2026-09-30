@@ -1,0 +1,83 @@
+name: Publish BESLE 2.1.0 Release Candidate 1
+
+on:
+  push:
+    branches:
+      - feature/runtime-configuration
+    paths:
+      - .github/workflows/publish-v2.1.0-rc1.yml
+      - docs/releases/BESLE-2.1.0-rc1.md
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    name: Publish validated Windows installer
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: v2.1.0-rc1
+      RELEASE_TARGET: 4a173202c747c853ab83e3cdc8994d68e85e8268
+      SOURCE_RUN_ID: "35413119800"
+      INSTALLER_SHA256: a6623dea9f543cd10ec8342e24b40e0e0fe5bba829d86601a1481d870b84f7cf
+
+    steps:
+      - name: Check out release documentation
+        uses: actions/checkout@v4
+
+      - name: Verify the validated source workflow
+        shell: bash
+        run: |
+          run_json="$(gh run view "$SOURCE_RUN_ID" --repo "$GITHUB_REPOSITORY" --json conclusion,headSha,name)"
+          test "$(jq -r '.conclusion' <<< "$run_json")" = "success"
+          test "$(jq -r '.headSha' <<< "$run_json")" = "$RELEASE_TARGET"
+          test "$(jq -r '.name' <<< "$run_json")" = "Windows Installer"
+
+      - name: Download the validated Windows artifact
+        shell: bash
+        run: |
+          gh run download "$SOURCE_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name besle-2.1.0-windows-x64 \
+            --dir release-input
+
+      - name: Verify release files and checksum
+        shell: bash
+        run: |
+          installer="release-input/dist/BESLE-2.1.0-Windows-x64-Setup.exe"
+          checksum="${installer}.sha256"
+          test -f "$installer"
+          test -f "$checksum"
+          actual="$(sha256sum "$installer" | awk '{print $1}')"
+          test "$actual" = "$INSTALLER_SHA256"
+          (cd release-input/dist && sha256sum -c BESLE-2.1.0-Windows-x64-Setup.exe.sha256)
+
+      - name: Ensure the release tag is unused
+        shell: bash
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists."
+            exit 1
+          fi
+
+      - name: Publish pre-release
+        shell: bash
+        run: |
+          gh release create "$RELEASE_TAG" \
+            "release-input/dist/BESLE-2.1.0-Windows-x64-Setup.exe#Windows x64 installer" \
+            "release-input/dist/BESLE-2.1.0-Windows-x64-Setup.exe.sha256#SHA-256 checksum" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$RELEASE_TARGET" \
+            --title "BESLE 2.1.0 Release Candidate 1" \
+            --notes-file docs/releases/BESLE-2.1.0-rc1.md \
+            --prerelease
+
+      - name: Verify published release
+        shell: bash
+        run: |
+          gh release view "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json tagName,isPrerelease,targetCommitish,url,assets
